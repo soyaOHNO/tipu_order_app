@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart'; // クリップボード機能を使うため追加
 import '../models/reservation.dart';
+import '../data/reservation_data.dart';
 
 class ReservationPage extends StatefulWidget {
   const ReservationPage({super.key});
@@ -20,49 +21,13 @@ class _ReservationPageState extends State<ReservationPage> {
   }
 
   Future<void> _fetchToretaData() async {
-    await Future.delayed(const Duration(seconds: 1));
-    final today = DateTime.now();
-    
-    // ご指定のフォーマットをテストするためのダミーデータ
+    // 1. まず setState の外でデータを取得して待機（await）する
+    final fetchedData = await fetchTodayReservations();
+
+    // 2. データが手に入ったら、setState の中で変数に代入して画面を更新する
     setState(() {
-      reservations = [
-        Reservation(
-          id: 'T001',
-          customerName: '田中 様',
-          time: DateTime(today.year, today.month, today.day, 19, 00),
-          peopleCount: 4,
-          memo: '', // 席のみ
-        ),
-        Reservation(
-          id: 'T002',
-          customerName: '佐藤 様',
-          time: DateTime(today.year, today.month, today.day, 19, 00),
-          peopleCount: 2,
-          memo: 'コース名A', // コースあり
-        ),
-        Reservation(
-          id: 'T003',
-          customerName: '鈴木 様',
-          time: DateTime(today.year, today.month, today.day, 19, 30),
-          peopleCount: 5,
-          memo: '',
-        ),
-        Reservation(
-          id: 'T004',
-          customerName: '高橋 様',
-          time: DateTime(today.year, today.month, today.day, 19, 30),
-          peopleCount: 2,
-          memo: '',
-        ),
-        Reservation(
-          id: 'T005',
-          customerName: '伊藤 様',
-          time: DateTime(today.year, today.month, today.day, 21, 00),
-          peopleCount: 3,
-          memo: 'コース名B',
-        ),
-      ];
-      isLoading = false;
+      reservations = fetchedData;
+      isLoading = false; // ついでにローディング解除もここに入れると完璧です
     });
   }
 

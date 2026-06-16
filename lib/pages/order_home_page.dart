@@ -9,6 +9,8 @@ import '../models/order_item.dart';
 import 'board_page.dart';
 import 'chief_page.dart';
 import 'previous_order_page.dart';
+import '../data/reservation_data.dart';
+import '../data/course_data.dart';
 
 class OrderHomePage extends StatefulWidget {
   const OrderHomePage({super.key});
@@ -19,6 +21,9 @@ class OrderHomePage extends StatefulWidget {
 
 class _OrderHomePageState extends State<OrderHomePage> with WidgetsBindingObserver {
   late List<OrderItem> orders;
+  
+  // ★追加：アイテムIDごとの「予約による追加必要量」を保持するマップ
+  Map<int, double> reservedItemCounts = {};
 
   @override
   void initState() {
@@ -33,6 +38,38 @@ class _OrderHomePageState extends State<OrderHomePage> with WidgetsBindingObserv
     initializeApp();
   }
 
+  Future<void> initializeApp() async {
+    await loadOrders();
+    await checkBusinessDay();
+    await _calculateReservedItems(); // ★追加：予約食材の計算を実行
+  }
+
+  // ★追加：今日の予約から必要な食材を計算する関数
+  Future<void> _calculateReservedItems() async {
+    final todayReservations = await fetchTodayReservations();
+    final Map<int, double> counts = {};
+
+    for (final res in todayReservations) {
+      if (res.memo.isNotEmpty) {
+        // メモ欄（コース名）と一致するレシピを探す
+        final recipeIndex = courseRecipes.indexWhere((c) => c.courseName == res.memo);
+        
+        if (recipeIndex != -1) {
+          final recipe = courseRecipes[recipeIndex];
+          // 1人あたりの必要量 × 予約人数 を足し合わせる
+          recipe.requiredItemsPerPerson.forEach((itemId, amountPerPerson) {
+            final totalAmount = amountPerPerson * res.peopleCount;
+            counts[itemId] = (counts[itemId] ?? 0.0) + totalAmount;
+          });
+        }
+      }
+    }
+
+    setState(() {
+      reservedItemCounts = counts;
+    });
+  }
+
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
@@ -44,11 +81,6 @@ class _OrderHomePageState extends State<OrderHomePage> with WidgetsBindingObserv
     if (state == AppLifecycleState.resumed) {
       checkBusinessDay();
     }
-  }
-
-  Future<void> initializeApp() async {
-    await loadOrders();
-    await checkBusinessDay();
   }
 
   Future<void> checkBusinessDay() async {
@@ -238,6 +270,13 @@ class _OrderHomePageState extends State<OrderHomePage> with WidgetsBindingObserv
                             text: '  最低:${order.item.minimum}',
                             style: const TextStyle(color: Color.fromARGB(255, 91, 90, 90), fontSize: 13),
                           ),
+                          // ★追加：もしこのアイテムが予約で必要なら、赤字で追加量を表示！
+                          if (reservedItemCounts.containsKey(order.item.id))
+                            TextSpan(
+                              // 例: 「 +予約分: 1.0」と表示
+                              text: '  +予約分: ${reservedItemCounts[order.item.id]!.toStringAsFixed(1)}',
+                              style: const TextStyle(color: Colors.red, fontSize: 13, fontWeight: FontWeight.bold),
+                            ),
                         ],
                       ),
                     ),
