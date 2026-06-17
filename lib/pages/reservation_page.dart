@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../models/reservation.dart';
 import '../data/reservation_data.dart';
-import '../data/course_data.dart'; // ★追加：コースマスタを参照する
+import '../data/course_data.dart';
 
 class ReservationPage extends StatefulWidget {
   const ReservationPage({super.key});
@@ -29,17 +29,16 @@ class _ReservationPageState extends State<ReservationPage> {
     });
   }
 
-  // ★新設：汚いメモ欄から登録されているコース名だけを自動で抜き出す魔法の関数
+  // ★変更点：Toretaの正式名称（toretaKeyword）で検索をかけ、見つかったら「現場名（courseName）」を返す
   String _extractCourseName(String memo) {
     for (final course in courseRecipes) {
-      if (memo.contains(course.courseName)) {
-        return course.courseName; // マスタのコース名が含まれていたらそれを返す
+      if (memo.contains(course.toretaKeyword)) {
+        return course.courseName; 
       }
     }
-    return ''; // なければ単品扱い
+    return ''; 
   }
 
-  // 予約リストを伝票出力用フォーマットに変換
   String _generatePrintFormat() {
     final Map<String, List<Reservation>> grouped = {};
     for (final r in reservations) {
@@ -47,7 +46,10 @@ class _ReservationPageState extends State<ReservationPage> {
       grouped.putIfAbsent(timeKey, () => []).add(r);
     }
 
-    final sortedKeys = grouped.keys.toList()..sort();
+    // ★修正点：安全に2行に分けてソートを実行
+    final sortedKeys = grouped.keys.toList();
+    sortedKeys.sort();
+
     final buffer = StringBuffer();
 
     for (final timeKey in sortedKeys) {
@@ -55,11 +57,10 @@ class _ReservationPageState extends State<ReservationPage> {
       for (int i = 0; i < resList.length; i++) {
         final r = resList[i];
         
-        // ★変更：生メモではなく、抜き出した綺麗なコース名だけをドッキング！
         String details = r.peopleCount.toString();
         final courseName = _extractCourseName(r.memo);
         if (courseName.isNotEmpty) {
-          details += '×$courseName'; // 例: "9×スペシャル"
+          details += '×$courseName'; 
         }
 
         if (i == 0) {
@@ -80,7 +81,7 @@ class _ReservationPageState extends State<ReservationPage> {
       context: context,
       builder: (context) {
         return AlertDialog(
-          title: const Text('伝票出力プレビュー'),
+          title: const Text('伝票出力用フォーマット (現場名クレンジング版)'),
           content: Container(
             width: double.maxFinite,
             padding: const EdgeInsets.all(16),
@@ -88,11 +89,7 @@ class _ReservationPageState extends State<ReservationPage> {
             child: SingleChildScrollView(
               child: SelectableText(
                 printText,
-                style: const TextStyle(
-                  fontFamily: 'monospace',
-                  fontSize: 18,
-                  height: 1.5,
-                ),
+                style: const TextStyle(fontFamily: 'monospace', fontSize: 18, height: 1.5),
               ),
             ),
           ),
@@ -106,10 +103,7 @@ class _ReservationPageState extends State<ReservationPage> {
                 if (context.mounted) {
                   Navigator.pop(context);
                   ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('伝票テキストをコピーしました！'),
-                      backgroundColor: Colors.green,
-                    ),
+                    const SnackBar(content: Text('伝票テキストをコピーしました！'), backgroundColor: Colors.green),
                   );
                 }
               },
@@ -128,18 +122,8 @@ class _ReservationPageState extends State<ReservationPage> {
         backgroundColor: Colors.blueAccent,
         foregroundColor: Colors.white,
         actions: [
-          IconButton(
-            icon: const Icon(Icons.print),
-            tooltip: '伝票テキストを作成',
-            onPressed: isLoading ? null : _showPrintPreview,
-          ),
-          IconButton(
-            icon: const Icon(Icons.refresh),
-            onPressed: () {
-              setState(() => isLoading = true);
-              _fetchToretaData();
-            },
-          ),
+          IconButton(icon: const Icon(Icons.print), tooltip: '伝票テキストを作成', onPressed: isLoading ? null : _showPrintPreview),
+          IconButton(icon: const Icon(Icons.refresh), onPressed: () { setState(() => isLoading = true); _fetchToretaData(); }),
         ],
       ),
       body: isLoading
@@ -149,8 +133,6 @@ class _ReservationPageState extends State<ReservationPage> {
               itemBuilder: (context, index) {
                 final r = reservations[index];
                 final timeString = '${r.time.hour.toString().padLeft(2, '0')}:${r.time.minute.toString().padLeft(2, '0')}';
-                
-                // ★追加：コース名の抜き出し
                 final courseName = _extractCourseName(r.memo);
                 
                 return Card(
@@ -161,7 +143,6 @@ class _ReservationPageState extends State<ReservationPage> {
                       child: Text('${r.peopleCount}', style: const TextStyle(fontWeight: FontWeight.bold)),
                     ),
                     title: Text('${r.customerName}  ($timeString)'),
-                    // ★デモ専用UI：システムが自動抽出したコース名と、実際のToretaメモを並べて見せる
                     subtitle: Padding(
                       padding: const EdgeInsets.only(top: 4.0),
                       child: Column(
@@ -171,12 +152,12 @@ class _ReservationPageState extends State<ReservationPage> {
                             Container(
                               padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                               decoration: BoxDecoration(color: Colors.red.shade50, borderRadius: BorderRadius.circular(4)),
-                              child: Text(courseName, style: const TextStyle(color: Colors.red, fontWeight: FontWeight.bold, fontSize: 13)),
+                              child: Text('判定コース: $courseName', style: const TextStyle(color: Colors.red, fontWeight: FontWeight.bold, fontSize: 13)),
                             )
                           else
-                            const Text('単品', style: TextStyle(color: Colors.blueGrey, fontSize: 13)),
+                            const Text('判定コース: 単品注文', style: TextStyle(color: Colors.blueGrey, fontSize: 13)),
                           const SizedBox(height: 2),
-                          Text('メモ: ${r.memo.isEmpty ? "なし" : r.memo}', style: const TextStyle(color: Colors.grey, fontSize: 11)),
+                          Text('Toreta生メモ: ${r.memo.isEmpty ? "なし" : r.memo}', style: const TextStyle(color: Colors.grey, fontSize: 11)),
                         ],
                       ),
                     ),

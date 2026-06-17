@@ -10,17 +10,14 @@ import 'data/dish_data.dart';
 import 'pages/dish_edit_page.dart';
 
 void main() async {
-  // 非同期処理をmain関数で実行するための必須コード
   WidgetsFlutterBinding.ensureInitialized();
   
-  // アプリ起動時にマスタデータを読み込む
   await loadItemMaster(); 
   await loadDishes();
   await loadCourseRecipes();
   
   runApp(const MyApp());
 }
-
 
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
@@ -34,7 +31,7 @@ class MyApp extends StatelessWidget {
         colorSchemeSeed: Colors.orange,
         useMaterial3: true,
       ),
-      home: const TopMenuPage(), // 起動時はトップメニュー画面を表示
+      home: const TopMenuPage(),
     );
   }
 }
@@ -56,7 +53,7 @@ class TopMenuPage extends StatelessWidget {
           crossAxisSpacing: 16,      
           mainAxisSpacing: 16,       
           children: [
-            // 発注管理ボタン
+            // 1. 発注管理（そのままオレンジ）
             MenuButton(
               title: '発注管理',
               icon: Icons.assignment,
@@ -69,7 +66,7 @@ class TopMenuPage extends StatelessWidget {
               },
             ),
 
-            // 予約状況ボタン
+            // 2. 予約状況（そのままブルー）
             MenuButton(
               title: '明日の予約状況\n(トレタ連携デモ)',
               icon: Icons.book_online,
@@ -82,18 +79,16 @@ class TopMenuPage extends StatelessWidget {
               },
             ),
 
-            // マスタ再読み込みボタン
+            // 3. マスタ再読み込み（同期システム：灰色）
             MenuButton(
               title: '各マスタを書き換えたらここを押して反映',
               icon: Icons.sync,
-              color: Colors.blue,
+              color: Colors.grey,
               onTap: () async {
-                // CSVデータを再読み込みして items を上書きする
                 await loadItemMaster();
                 await loadDishes();
                 await loadCourseRecipes();
                 
-                // 読み込み完了をスナックバーで通知
                 if (context.mounted) {
                   ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(
@@ -105,11 +100,11 @@ class TopMenuPage extends StatelessWidget {
               },
             ),
             
-            // 発注品マスタ編集ボタン
+            // 4. 発注品マスタ編集（マスタ系：爽やかな明るい薄緑「shade300」）
             MenuButton(
               title: '発注品マスタ編集',
               icon: Icons.edit_note,
-              color: Colors.green, // 色も有効な感じのグリーンへ
+              color: Colors.lightGreen.shade600, // ★明るい薄緑
               onTap: () {
                 Navigator.push(
                   context,
@@ -118,28 +113,29 @@ class TopMenuPage extends StatelessWidget {
               },
             ),
 
-            // コースレシピ編集ボタン
-            MenuButton(
-              title: 'コースレシピ編集',
-              icon: Icons.restaurant_menu,
-              color: Colors.teal, // おしゃれな青緑色に
-              onTap: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (_) => const CourseEditPage()),
-                );
-              },
-            ),
-
-            // 料理マスタ編集ボタン
+            // 5. 料理マスタ編集（マスタ系：標準的な中間の黄緑「shade500」）
+            // ★目線のフロー（食材➔料理➔コース）に合わせるため、5番と6番の配置順を入れ替えました！
             MenuButton(
               title: '料理マスタ編集',
               icon: Icons.lunch_dining,
-              color: Colors.deepOrange, // 美味しそうなディープオレンジ
+              color: Colors.lightGreen.shade500, // ★中間の黄緑
               onTap: () {
                 Navigator.push(
                   context,
                   MaterialPageRoute(builder: (_) => const DishEditPage()),
+                );
+              },
+            ),
+
+            // 6. コースレシピ編集（マスタ系：少し深い落ち着いた緑「shade700」）
+            MenuButton(
+              title: 'コースレシピ編集',
+              icon: Icons.restaurant_menu,
+              color: Colors.lightGreen.shade400, // ★深い引き締まった緑
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const CourseEditPage()),
                 );
               },
             ),
@@ -150,7 +146,6 @@ class TopMenuPage extends StatelessWidget {
   }
 }
 
-// メニュー用のカスタムボタン（再利用しやすくパーツ化）
 class MenuButton extends StatelessWidget {
   final String title;
   final IconData icon;

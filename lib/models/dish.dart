@@ -1,8 +1,7 @@
-// ★新設：食材ごとの個別レートと条件を管理するクラス
 class DishItemRequirement {
-  double amountPerPerson; // 1人あたり（または1卓あたり）の必要量
-  double yieldPerUnit;    // 食材1単位（1箱/1パック/1個）から取れる仕込み量（個別レート）
-  bool isTableFixed;      // テーブルごとに固定の食材か（例：サラダのねぎ・レモンなど）
+  double amountPerPerson;
+  double yieldPerUnit;
+  bool isTableFixed;
 
   DishItemRequirement({
     required this.amountPerPerson,
@@ -13,7 +12,7 @@ class DishItemRequirement {
   factory DishItemRequirement.fromJson(Map<String, dynamic> json) {
     return DishItemRequirement(
       amountPerPerson: (json['amountPerPerson'] ?? 0.0).toDouble(),
-      yieldPerUnit: (json['yieldPerUnit'] ?? 1.0).toDouble(), // 0割防止でデフォルト1.0
+      yieldPerUnit: (json['yieldPerUnit'] ?? 1.0).toDouble(),
       isTableFixed: json['isTableFixed'] ?? false,
     );
   }
@@ -28,16 +27,20 @@ class DishItemRequirement {
 }
 
 class Dish {
+  final int id; // ★追加：名前が変わっても追跡できる一意のID
   String name;
-  String calcType; // ★追加：'proportion'(比例), 'per_person'(個数), 'step'(段階), 'per_table'(卓固定)
+  String calcType;
   String memo;
-  Map<int, DishItemRequirement> requiredItems; // ★変更：Stringから専用クラスへ
+  Map<int, DishItemRequirement> requiredItems;
+  bool alive; // ★追加：論理削除フラグ（過去のデータを消さずに隠す）
 
   Dish({
+    required this.id,
     required this.name,
     required this.calcType,
     required this.memo,
     required this.requiredItems,
+    this.alive = true, // デフォルトは有効
   });
 
   factory Dish.fromJson(Map<String, dynamic> json) {
@@ -51,10 +54,12 @@ class Dish {
       });
     }
     return Dish(
+      id: json['id'] ?? 0, // ★追加
       name: json['name'] ?? '',
       calcType: json['calcType'] ?? 'proportion',
       memo: json['memo'] ?? '',
       requiredItems: itemsMap,
+      alive: json['alive'] ?? true, // ★追加
     );
   }
 
@@ -64,10 +69,12 @@ class Dish {
       itemsJson[key.toString()] = value.toJson();
     });
     return {
+      'id': id, // ★追加
       'name': name,
       'calcType': calcType,
       'memo': memo,
       'requiredItems': itemsJson,
+      'alive': alive, // ★追加
     };
   }
 }

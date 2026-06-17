@@ -3,51 +3,34 @@ import 'dart:io';
 import 'package:path_provider/path_provider.dart';
 import '../models/course_recipe.dart';
 
-// アプリ全体で使う動的なコースレシピリスト
 List<CourseRecipe> courseRecipes = [];
 
-// ① コースレシピの読み込み
 Future<void> loadCourseRecipes() async {
-  final directory = await getApplicationDocumentsDirectory();
-  final masterDir = Directory('${directory.path}/みらんちぷ発注/マスタ');
-  if (!await masterDir.exists()) {
-    await masterDir.create(recursive: true);
-  }
-
-  final file = File('${masterDir.path}/course_recipes.json');
-
-  if (!await file.exists()) {
-    // ファイルがない場合はデフォルトの初期データをJSONにして保存
-    courseRecipes = List.from(defaultCourseRecipes);
-    await saveCourseRecipesToLocal();
-    print('デフォルトのコースレシピ(JSON)を作成しました');
-  } else {
-    // ファイルがある場合は読み込んでパース
-    final jsonString = await file.readAsString();
-    final List<dynamic> decodedList = jsonDecode(jsonString);
-    courseRecipes = decodedList.map((json) => CourseRecipe.fromJson(json)).toList();
-    print('コースレシピをJSONから読み込みました: ${courseRecipes.length}件');
-  }
-}
-
-// ② コースレシピのローカル保存
-Future<void> saveCourseRecipesToLocal() async {
   final directory = await getApplicationDocumentsDirectory();
   final file = File('${directory.path}/みらんちぷ発注/マスタ/course_recipes.json');
 
-  final List<Map<String, dynamic>> jsonList = courseRecipes.map((c) => c.toJson()).toList();
-  await file.writeAsString(jsonEncode(jsonList));
-  print('コースレシピをJSONファイルに保存しました');
+  if (!await file.exists()) {
+    courseRecipes = [
+      // ★ dishNames ではなく、料理の「ID(数値)」で紐付ける
+      CourseRecipe(id: 1, courseName: '赤天', toretaKeyword: '赤身天国コース', dishIds: [1, 6, 3, 4]),
+      CourseRecipe(id: 2, courseName: 'みらん', toretaKeyword: 'ミランコース', dishIds: [7, 1, 8, 2, 9, 10]),
+      CourseRecipe(id: 3, courseName: 'スペシャル', toretaKeyword: 'スペシャルコース', dishIds: [1, 6, 8, 2, 9, 4]),
+      CourseRecipe(id: 4, courseName: 'アニバ', toretaKeyword: 'アニバーサリープレミアムコース', dishIds: [5, 3, 4]),
+      CourseRecipe(id: 5, courseName: 'ロイヤル(赤さし)', toretaKeyword: 'ロイヤルプレミアムコース', dishIds: [1, 6, 3, 4]),
+      CourseRecipe(id: 6, courseName: '赤くら', toretaKeyword: '赤身天国くらした火山コース', dishIds: [1, 6, 8, 2, 3, 4]),
+      CourseRecipe(id: 7, courseName: '赤さし', toretaKeyword: '赤身天国刺身コース', dishIds: [1, 6, 3, 4]),
+    ];
+    await saveCourseRecipesToLocal();
+  } else {
+    final jsonString = await file.readAsString();
+    final List<dynamic> decodedList = jsonDecode(jsonString);
+    courseRecipes = decodedList.map((json) => CourseRecipe.fromJson(json)).toList();
+  }
 }
 
-// 初期データの定義
-final List<CourseRecipe> defaultCourseRecipes = [
-  CourseRecipe(
-    courseName: 'コース名A',
-    dishNames: ['特製サラダ', 'おつまみセット'], // ★料理名を指定
-  ),
-  CourseRecipe(
-    courseName: 'コース名B',
-    dishNames: ['特製サラダ', 'たまごスープ'], // ★料理名を指定
-  ),
-];
+Future<void> saveCourseRecipesToLocal() async {
+  final directory = await getApplicationDocumentsDirectory();
+  final file = File('${directory.path}/みらんちぷ発注/マスタ/course_recipes.json');
+  final List<Map<String, dynamic>> jsonList = courseRecipes.map((c) => c.toJson()).toList();
+  await file.writeAsString(jsonEncode(jsonList));
+}

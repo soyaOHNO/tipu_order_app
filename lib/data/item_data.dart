@@ -167,12 +167,15 @@ const List<Item> defaultItems = [
   Item(id: 69, name: '濃口しょうゆ', minimum: '', category: 'コンロ下', supplier: '', orderType: OrderType.part),
   Item(id: 70, name: '本みりん', minimum: '', category: 'コンロ下', supplier: '', orderType: OrderType.part),
 
+  // 裏
+  Item(id: 71, name: 'コーン茶', minimum: '1袋', category: '裏', supplier: '', orderType: OrderType.chief),
+
   // その他
-  Item(id: 71, name: 'ウニ', minimum: '1パック', category: 'その他', supplier: '', orderType: OrderType.chief),
-  Item(id: 72, name: 'アスパラ', minimum: '2束', category: 'その他', supplier: '', orderType: OrderType.chief),
-  Item(id: 73, name: 'わさび', minimum: '裏1個', category: 'その他', supplier: '', orderType: OrderType.chief),
-  Item(id: 74, name: 'カソナード', minimum: '1袋', category: 'その他', supplier: '', orderType: OrderType.chief),
-  Item(id: 75, name: '銀カップ', minimum: '10個', category: 'その他', supplier: '', orderType: OrderType.chief),
-  Item(id: 76, name: 'ボン・スター', minimum: '1個', category: 'その他', supplier: '', orderType: OrderType.chief),
-  Item(id: 77, name: 'ワンダフル', minimum: '1本', category: 'その他', supplier: '', orderType: OrderType.chief),
+  Item(id: 72, name: 'ウニ', minimum: '1パック', category: 'その他', supplier: '', orderType: OrderType.chief),
+  Item(id: 73, name: 'アスパラ', minimum: '2束', category: 'その他', supplier: '', orderType: OrderType.chief),
+  Item(id: 74, name: 'わさび', minimum: '裏1個', category: 'その他', supplier: '', orderType: OrderType.chief),
+  Item(id: 75, name: 'カソナード', minimum: '1袋', category: 'その他', supplier: '', orderType: OrderType.chief),
+  Item(id: 76, name: '銀カップ', minimum: '10個', category: 'その他', supplier: '', orderType: OrderType.chief),
+  Item(id: 77, name: 'ボン・スター', minimum: '1個', category: 'その他', supplier: '', orderType: OrderType.chief),
+  Item(id: 78, name: 'ワンダフル', minimum: '1本', category: 'その他', supplier: '', orderType: OrderType.chief),
 ];

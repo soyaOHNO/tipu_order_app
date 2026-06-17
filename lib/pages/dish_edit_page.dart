@@ -1,3 +1,4 @@
+import 'dart:math';
 import 'package:flutter/material.dart';
 import '../data/dish_data.dart';
 import '../data/item_data.dart';
@@ -18,10 +19,8 @@ class _DishEditPageState extends State<DishEditPage> {
     final nameController = TextEditingController(text: existingDish?.name ?? '');
     final memoController = TextEditingController(text: existingDish?.memo ?? '');
     
-    // 計算タイプの初期値
     String selectedCalcType = existingDish?.calcType ?? 'proportion';
 
-    // 編集中の食材要件マップをディープコピー
     Map<int, DishItemRequirement> tempRequiredItems = isNew
         ? {}
         : Map<int, DishItemRequirement>.from(
@@ -58,7 +57,6 @@ class _DishEditPageState extends State<DishEditPage> {
                       ),
                       const SizedBox(height: 12),
                       
-                      // ★追加：計算タイプのドロップダウン
                       DropdownButtonFormField<String>(
                         value: selectedCalcType,
                         decoration: const InputDecoration(labelText: '自動計算のタイプ', border: OutlineInputBorder()),
@@ -94,11 +92,11 @@ class _DishEditPageState extends State<DishEditPage> {
                         final req = entry.value;
                         final item = items.firstWhere(
                           (i) => i.id == itemId,
-                          orElse: () => Item(id: itemId, name: '不明な食材(ID:$itemId)', minimum: '', category: '', supplier: '', orderType: OrderType.chief),
+                          orElse: () => Item(id: itemId, name: '不明な食材(ID:$itemId)', minimum: '', category: '', supplier: '', orderType: OrderType.chief, alive: false),
                         );
 
                         return Card(
-                          color: Colors.grey.shade50,
+                          color: item.alive ? Colors.grey.shade50 : Colors.red.shade50,
                           margin: const EdgeInsets.symmetric(vertical: 6),
                           child: Padding(
                             padding: const EdgeInsets.all(12.0),
@@ -108,7 +106,10 @@ class _DishEditPageState extends State<DishEditPage> {
                                 Row(
                                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                   children: [
-                                    Text(item.name, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.indigo)),
+                                    Text(
+                                      item.name, 
+                                      style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.indigo, decoration: item.alive ? null : TextDecoration.lineThrough)
+                                    ),
                                     IconButton(
                                       icon: const Icon(Icons.delete_outline, color: Colors.red, size: 22),
                                       onPressed: () => setStateDialog(() => tempRequiredItems.remove(itemId)),
@@ -118,7 +119,6 @@ class _DishEditPageState extends State<DishEditPage> {
                                 const SizedBox(height: 8),
                                 Row(
                                   children: [
-                                    // ① 必要量の入力
                                     Expanded(
                                       child: TextField(
                                         keyboardType: const TextInputType.numberWithOptions(decimal: true),
@@ -128,7 +128,6 @@ class _DishEditPageState extends State<DishEditPage> {
                                       ),
                                     ),
                                     const SizedBox(width: 8),
-                                    // ② 個別レート（仕込み分解数）の入力
                                     Expanded(
                                       child: TextField(
                                         keyboardType: const TextInputType.numberWithOptions(decimal: true),
@@ -139,7 +138,6 @@ class _DishEditPageState extends State<DishEditPage> {
                                     ),
                                   ],
                                 ),
-                                // ③ テーブル固定フラグのスイッチ（比例型のみ意味を持つが、いつでも設定可能）
                                 Row(
                                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                   children: [
@@ -188,7 +186,9 @@ class _DishEditPageState extends State<DishEditPage> {
                 if (!isNew)
                   TextButton(
                     onPressed: () async {
-                      dishes.removeWhere((d) => d.name == existingDish.name);
+                      // ★物理削除ではなく、論理削除に変更
+                      final idx = dishes.indexWhere((d) => d.id == existingDish.id);
+                      if (idx != -1) dishes[idx].alive = false;
                       await saveDishesToLocal();
                       if (context.mounted) Navigator.pop(context);
                       setState(() {});
@@ -199,18 +199,27 @@ class _DishEditPageState extends State<DishEditPage> {
                 ElevatedButton(
                   onPressed: nameController.text.trim().isEmpty ? null : () async {
                     final finalName = nameController.text.trim();
-                    final finalDish = Dish(
-                      name: finalName,
-                      calcType: selectedCalcType,
-                      memo: memoController.text.trim(),
-                      requiredItems: tempRequiredItems,
-                    );
-
+                    
                     if (isNew) {
-                      dishes.add(finalDish);
+                      // ★新規IDの自動発番
+                      int newId = dishes.isEmpty ? 1 : dishes.map((d) => d.id).reduce(max) + 1;
+                      final newDish = Dish(
+                        id: newId,
+                        name: finalName,
+                        calcType: selectedCalcType,
+                        memo: memoController.text.trim(),
+                        requiredItems: tempRequiredItems,
+                        alive: true,
+                      );
+                      dishes.add(newDish);
                     } else {
-                      final idx = dishes.indexWhere((d) => d.name == existingDish.name);
-                      if (idx != -1) dishes[idx] = finalDish;
+                      final idx = dishes.indexWhere((d) => d.id == existingDish.id);
+                      if (idx != -1) {
+                        dishes[idx].name = finalName;
+                        dishes[idx].calcType = selectedCalcType;
+                        dishes[idx].memo = memoController.text.trim();
+                        dishes[idx].requiredItems = tempRequiredItems;
+                      }
                     }
 
                     await saveDishesToLocal();
@@ -229,14 +238,17 @@ class _DishEditPageState extends State<DishEditPage> {
 
   @override
   Widget build(BuildContext context) {
+    // ★画面に表示するのは論理削除されていないもののみ
+    final activeDishes = dishes.where((d) => d.alive).toList();
+
     return Scaffold(
       appBar: AppBar(title: const Text('料理マスタ編集')),
-      body: dishes.isEmpty
+      body: activeDishes.isEmpty
           ? const Center(child: Text('登録されている料理はありません', style: TextStyle(color: Colors.grey)))
           : ListView.builder(
-              itemCount: dishes.length,
+              itemCount: activeDishes.length,
               itemBuilder: (context, index) {
-                final dish = dishes[index];
+                final dish = activeDishes[index];
                 String typeLabel = '比例型';
                 if (dish.calcType == 'per_person') typeLabel = '人数個数型';
                 if (dish.calcType == 'step') typeLabel = '段階型';
