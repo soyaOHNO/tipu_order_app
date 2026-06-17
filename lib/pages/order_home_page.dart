@@ -12,8 +12,6 @@ import 'previous_order_page.dart';
 import '../data/reservation_data.dart';
 import '../data/course_data.dart';
 import '../data/dish_data.dart';
-import '../data/course_data.dart';
-import '../data/reservation_data.dart';
 
 class OrderHomePage extends StatefulWidget {
   const OrderHomePage({super.key});
