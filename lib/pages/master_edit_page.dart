@@ -102,10 +102,11 @@ class _MasterEditPageState extends State<MasterEditPage> {
                       decoration: const InputDecoration(labelText: '発注担当'),
                       items: OrderType.values.map((type) {
                         String label = type.name;
-                        if (type == OrderType.chief) label = '主任さん (chief)';
-                        if (type == OrderType.part) label = 'パートさん (part)';
-                        if (type == OrderType.owner) label = 'とも兄さん (owner)';
-                        if (type == OrderType.regular) label = '定期発注 (regular)';
+                        if (type == OrderType.chief) label = '主任さん';
+                        if (type == OrderType.part) label = 'パートさん';
+                        if (type == OrderType.owner) label = 'とも兄さん';
+                        if (type == OrderType.regular) label = '定期発注';
+                        if (type == OrderType.preparation) label = '仕込み';
                         return DropdownMenuItem(value: type, child: Text(label));
                       }).toList(),
                       onChanged: (val) {

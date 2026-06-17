@@ -1,15 +1,22 @@
+// flutter run -d windows
 import 'package:flutter/material.dart';
 import 'pages/order_home_page.dart';
 import 'data/item_data.dart';
 import 'pages/master_edit_page.dart';
 import 'pages/reservation_page.dart';
+import 'data/course_data.dart';
+import 'pages/course_edit_page.dart';
+import 'data/dish_data.dart';
+import 'pages/dish_edit_page.dart';
 
 void main() async {
   // 非同期処理をmain関数で実行するための必須コード
   WidgetsFlutterBinding.ensureInitialized();
   
-  // アプリ起動時にマスタデータ(CSV)を読み込む
+  // アプリ起動時にマスタデータを読み込む
   await loadItemMaster(); 
+  await loadDishes();
+  await loadCourseRecipes();
   
   runApp(const MyApp());
 }
@@ -49,7 +56,7 @@ class TopMenuPage extends StatelessWidget {
           crossAxisSpacing: 16,      
           mainAxisSpacing: 16,       
           children: [
-            // 1. 発注管理ボタン（既存）
+            // 発注管理ボタン
             MenuButton(
               title: '発注管理',
               icon: Icons.assignment,
@@ -62,8 +69,9 @@ class TopMenuPage extends StatelessWidget {
               },
             ),
 
+            // 予約状況ボタン
             MenuButton(
-              title: '予約状況\n(トレタ連携デモ)',
+              title: '明日の予約状況\n(トレタ連携デモ)',
               icon: Icons.book_online,
               color: Colors.blue,
               onTap: () {
@@ -74,14 +82,16 @@ class TopMenuPage extends StatelessWidget {
               },
             ),
 
-            // 2. マスタ再読み込みボタン（新規追加！）
+            // マスタ再読み込みボタン
             MenuButton(
-              title: '商品マスタを書き換えたらここを押して反映',
+              title: '各マスタを書き換えたらここを押して反映',
               icon: Icons.sync,
               color: Colors.blue,
               onTap: () async {
                 // CSVデータを再読み込みして items を上書きする
                 await loadItemMaster();
+                await loadDishes();
+                await loadCourseRecipes();
                 
                 // 読み込み完了をスナックバーで通知
                 if (context.mounted) {
@@ -95,15 +105,41 @@ class TopMenuPage extends StatelessWidget {
               },
             ),
             
-            // 3. 商品マスタ編集ボタン（稼働開始！）
+            // 発注品マスタ編集ボタン
             MenuButton(
-              title: '商品マスタ編集',
+              title: '発注品マスタ編集',
               icon: Icons.edit_note,
               color: Colors.green, // 色も有効な感じのグリーンへ
               onTap: () {
                 Navigator.push(
                   context,
                   MaterialPageRoute(builder: (_) => const MasterEditPage()),
+                );
+              },
+            ),
+
+            // コースレシピ編集ボタン
+            MenuButton(
+              title: 'コースレシピ編集',
+              icon: Icons.restaurant_menu,
+              color: Colors.teal, // おしゃれな青緑色に
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const CourseEditPage()),
+                );
+              },
+            ),
+
+            // 料理マスタ編集ボタン
+            MenuButton(
+              title: '料理マスタ編集',
+              icon: Icons.lunch_dining,
+              color: Colors.deepOrange, // 美味しそうなディープオレンジ
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const DishEditPage()),
                 );
               },
             ),

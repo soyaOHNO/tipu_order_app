@@ -3,6 +3,7 @@ enum OrderType {
   chief,
   owner,
   regular,
+  preparation,
 }
 
 class Item {

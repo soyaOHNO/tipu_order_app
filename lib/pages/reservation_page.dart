@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart'; // クリップボード機能を使うため追加
+import 'package:flutter/services.dart';
 import '../models/reservation.dart';
 import '../data/reservation_data.dart';
+import '../data/course_data.dart'; // ★追加：コースマスタを参照する
 
 class ReservationPage extends StatefulWidget {
   const ReservationPage({super.key});
@@ -21,47 +22,49 @@ class _ReservationPageState extends State<ReservationPage> {
   }
 
   Future<void> _fetchToretaData() async {
-    // 1. まず setState の外でデータを取得して待機（await）する
     final fetchedData = await fetchTodayReservations();
-
-    // 2. データが手に入ったら、setState の中で変数に代入して画面を更新する
     setState(() {
       reservations = fetchedData;
-      isLoading = false; // ついでにローディング解除もここに入れると完璧です
+      isLoading = false;
     });
   }
 
-  // ★ 追加：予約リストをご指定のフォーマットのテキストに変換する関数
+  // ★新設：汚いメモ欄から登録されているコース名だけを自動で抜き出す魔法の関数
+  String _extractCourseName(String memo) {
+    for (final course in courseRecipes) {
+      if (memo.contains(course.courseName)) {
+        return course.courseName; // マスタのコース名が含まれていたらそれを返す
+      }
+    }
+    return ''; // なければ単品扱い
+  }
+
+  // 予約リストを伝票出力用フォーマットに変換
   String _generatePrintFormat() {
-    // 1. 時間（"HH:mm"）をキーにして、同じ時間の予約をリストにまとめる
     final Map<String, List<Reservation>> grouped = {};
     for (final r in reservations) {
       final timeKey = '${r.time.hour.toString().padLeft(2, '0')}:${r.time.minute.toString().padLeft(2, '0')}';
       grouped.putIfAbsent(timeKey, () => []).add(r);
     }
 
-    // 2. 時間順に並び替える
     final sortedKeys = grouped.keys.toList()..sort();
-
     final buffer = StringBuffer();
 
-    // 3. テキストの組み立て
     for (final timeKey in sortedKeys) {
       final resList = grouped[timeKey]!;
       for (int i = 0; i < resList.length; i++) {
         final r = resList[i];
         
-        // 人数とコース名の結合（メモがあれば "× コース名" を足す）
+        // ★変更：生メモではなく、抜き出した綺麗なコース名だけをドッキング！
         String details = r.peopleCount.toString();
-        if (r.memo.isNotEmpty) {
-          details += '×${r.memo}'; // 例: "2×コース名A"
+        final courseName = _extractCourseName(r.memo);
+        if (courseName.isNotEmpty) {
+          details += '×$courseName'; // 例: "9×スペシャル"
         }
 
         if (i == 0) {
-          // その時間の1件目は時間を出力
           buffer.writeln('$timeKey : $details');
         } else {
-          // 2件目以降は時間を空白(インデント)にして綺麗に揃える
           buffer.writeln('         : $details');
         }
       }
@@ -70,7 +73,6 @@ class _ReservationPageState extends State<ReservationPage> {
     return buffer.toString();
   }
 
-  // ★ 追加：印刷用プレビューダイアログを表示し、コピーする関数
   void _showPrintPreview() {
     final printText = _generatePrintFormat();
     
@@ -78,16 +80,16 @@ class _ReservationPageState extends State<ReservationPage> {
       context: context,
       builder: (context) {
         return AlertDialog(
-          title: const Text('伝票出力用フォーマット'),
+          title: const Text('伝票出力プレビュー'),
           content: Container(
             width: double.maxFinite,
             padding: const EdgeInsets.all(16),
-            color: Colors.grey.shade100, // レシートっぽい背景色
+            color: Colors.grey.shade100,
             child: SingleChildScrollView(
               child: SelectableText(
                 printText,
                 style: const TextStyle(
-                  fontFamily: 'monospace', // 等幅フォントで揃えを綺麗にする
+                  fontFamily: 'monospace',
                   fontSize: 18,
                   height: 1.5,
                 ),
@@ -95,21 +97,17 @@ class _ReservationPageState extends State<ReservationPage> {
             ),
           ),
           actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('閉じる'),
-            ),
+            TextButton(onPressed: () => Navigator.pop(context), child: const Text('閉じる')),
             ElevatedButton.icon(
               icon: const Icon(Icons.copy),
               label: const Text('コピーする'),
               onPressed: () async {
-                // クリップボードにコピー
                 await Clipboard.setData(ClipboardData(text: printText));
                 if (context.mounted) {
                   Navigator.pop(context);
                   ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(
-                      content: Text('伝票テキストをコピーしました！プリンターアプリに貼り付けてください。'),
+                      content: Text('伝票テキストをコピーしました！'),
                       backgroundColor: Colors.green,
                     ),
                   );
@@ -126,11 +124,10 @@ class _ReservationPageState extends State<ReservationPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('本日の予約 (トレタ連携)'),
+        title: const Text('明日の予約状況'),
         backgroundColor: Colors.blueAccent,
         foregroundColor: Colors.white,
         actions: [
-          // ★ 追加：伝票出力ボタン
           IconButton(
             icon: const Icon(Icons.print),
             tooltip: '伝票テキストを作成',
@@ -153,15 +150,36 @@ class _ReservationPageState extends State<ReservationPage> {
                 final r = reservations[index];
                 final timeString = '${r.time.hour.toString().padLeft(2, '0')}:${r.time.minute.toString().padLeft(2, '0')}';
                 
+                // ★追加：コース名の抜き出し
+                final courseName = _extractCourseName(r.memo);
+                
                 return Card(
-                  margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
                   child: ListTile(
                     leading: CircleAvatar(
                       backgroundColor: Colors.blue.shade100,
                       child: Text('${r.peopleCount}', style: const TextStyle(fontWeight: FontWeight.bold)),
                     ),
                     title: Text('${r.customerName}  ($timeString)'),
-                    subtitle: r.memo.isNotEmpty ? Text(r.memo, style: const TextStyle(color: Colors.red)) : null,
+                    // ★デモ専用UI：システムが自動抽出したコース名と、実際のToretaメモを並べて見せる
+                    subtitle: Padding(
+                      padding: const EdgeInsets.only(top: 4.0),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          if (courseName.isNotEmpty)
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                              decoration: BoxDecoration(color: Colors.red.shade50, borderRadius: BorderRadius.circular(4)),
+                              child: Text(courseName, style: const TextStyle(color: Colors.red, fontWeight: FontWeight.bold, fontSize: 13)),
+                            )
+                          else
+                            const Text('単品', style: TextStyle(color: Colors.blueGrey, fontSize: 13)),
+                          const SizedBox(height: 2),
+                          Text('メモ: ${r.memo.isEmpty ? "なし" : r.memo}', style: const TextStyle(color: Colors.grey, fontSize: 11)),
+                        ],
+                      ),
+                    ),
                   ),
                 );
               },

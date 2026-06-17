@@ -1,10 +1,23 @@
 class CourseRecipe {
-  final String courseName;
-  // ItemのIDをキーにして、1人あたりの必要量を設定する
-  final Map<int, double> requiredItemsPerPerson;
+  String courseName;
+  List<String> dishNames; // ★食材ではなく、料理名のリストに変更！
 
   CourseRecipe({
     required this.courseName,
-    required this.requiredItemsPerPerson,
+    required this.dishNames,
   });
+
+  factory CourseRecipe.fromJson(Map<String, dynamic> json) {
+    return CourseRecipe(
+      courseName: json['courseName'] ?? '',
+      dishNames: List<String>.from(json['dishNames'] ?? []),
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'courseName': courseName,
+      'dishNames': dishNames,
+    };
+  }
 }

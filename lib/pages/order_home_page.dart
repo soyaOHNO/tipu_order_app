@@ -11,6 +11,9 @@ import 'chief_page.dart';
 import 'previous_order_page.dart';
 import '../data/reservation_data.dart';
 import '../data/course_data.dart';
+import '../data/dish_data.dart';
+import '../data/course_data.dart';
+import '../data/reservation_data.dart';
 
 class OrderHomePage extends StatefulWidget {
   const OrderHomePage({super.key});
@@ -44,29 +47,114 @@ class _OrderHomePageState extends State<OrderHomePage> with WidgetsBindingObserv
     await _calculateReservedItems(); // ★追加：予約食材の計算を実行
   }
 
-  // ★追加：今日の予約から必要な食材を計算する関数
+  // 今日の予約から必要な食材を計算する関数（マスタ完全連動＋個別レート版）
   Future<void> _calculateReservedItems() async {
     final todayReservations = await fetchTodayReservations();
-    final Map<int, double> counts = {};
+    final Map<int, double> rawCounts = {}; // 途中の小数合算用
 
     for (final res in todayReservations) {
-      if (res.memo.isNotEmpty) {
-        // メモ欄（コース名）と一致するレシピを探す
-        final recipeIndex = courseRecipes.indexWhere((c) => c.courseName == res.memo);
-        
-        if (recipeIndex != -1) {
-          final recipe = courseRecipes[recipeIndex];
-          // 1人あたりの必要量 × 予約人数 を足し合わせる
-          recipe.requiredItemsPerPerson.forEach((itemId, amountPerPerson) {
-            final totalAmount = amountPerPerson * res.peopleCount;
-            counts[itemId] = (counts[itemId] ?? 0.0) + totalAmount;
+      if (res.memo.isEmpty) continue;
+
+      // 1. コースが登録されているか確認 (★完全一致から部分一致の自動抽出へ変更)
+      int courseIdx = -1;
+      for (int i = 0; i < courseRecipes.length; i++) {
+        // Toretaのメモ欄の中に、マスタのコース名が含まれているかチェック
+        if (res.memo.contains(courseRecipes[i].courseName)) {
+          courseIdx = i;
+          break; // 最初に見つかったコースで確定
+        }
+      }
+      
+      // コース名が含まれていなければ、自動で「単品客」とみなして計算をスキップ
+      if (courseIdx == -1) continue; 
+      final course = courseRecipes[courseIdx];
+
+      // アルゴリズム①：客数と席数から「各テーブルの均一な人数リスト」を作成
+      int tCount = res.tableCount > 0 ? res.tableCount : 1; 
+      int basePeople = res.peopleCount ~/ tCount;
+      int remainder = res.peopleCount % tCount;
+
+      List<int> tables = List.generate(tCount, (index) => basePeople);
+      for (int i = 0; i < remainder; i++) {
+        tables[i] += 1;
+      }
+
+      // 2. コースに含まれる料理をループ
+      for (final dishName in course.dishNames) {
+        // 料理マスタから該当する料理を取得
+        final dishIdx = dishes.indexWhere((d) => d.name == dishName);
+        if (dishIdx == -1) continue;
+        final dish = dishes[dishIdx];
+
+        // テーブルごとの人数(p)に応じてマスタの数値から自動計算
+        for (final p in tables) {
+          
+          dish.requiredItems.forEach((itemId, req) {
+            double finalAmountForThisTable = 0.0;
+
+            // ★ アルゴリズム②：マスタのcalcTypeに基づく4パターンの自動換算
+            switch (dish.calcType) {
+              
+              case 'proportion':
+                // ① 人数比例・増減型：3名基準(1.0)とし、1名増減で±20%(0.2)スライド
+                if (req.isTableFixed) {
+                  // ただし「テーブル固定食材(ねぎ等)」なら人数に関わらず1卓につき1つ分
+                  finalAmountForThisTable = req.amountPerPerson / req.yieldPerUnit;
+                } else {
+                  double ratio = 1.0 + (p - 3) * 0.2;
+                  if (ratio < 0) ratio = 0; // マイナス防止
+                  finalAmountForThisTable = (req.amountPerPerson * ratio) / req.yieldPerUnit;
+                }
+                break;
+
+              case 'per_person':
+                // ② 人数＝個数型：基本は人数分の現物パーツ
+                int pieces = p;
+                // 【現場特例】サンチュのみ、2名の場合は4枚にする
+                if (dish.name == 'サンチュ' && p == 2) {
+                  pieces = 4;
+                }
+                finalAmountForThisTable = (pieces * req.amountPerPerson) / req.yieldPerUnit;
+                break;
+
+              case 'step':
+                // ③ 段階（しきい値）型：人数に応じて階段状に個数が変わる
+                double stepCount = 1.0;
+                if (dish.name == '盛岡冷麺') {
+                  if (p <= 2) stepCount = 0.5;
+                  else if (p <= 4) stepCount = 1.0;
+                  else if (p == 5) stepCount = 1.5;
+                  else if (p <= 7) stepCount = 2.0;
+                } else if (dish.name == 'クッパ') {
+                  stepCount = (p >= 2 && p <= 4) ? 1.0 : 2.0;
+                } else {
+                  // 未定義の段階型は安全のため人数比例
+                  stepCount = p.toDouble();
+                }
+                finalAmountForThisTable = (stepCount * req.amountPerPerson) / req.yieldPerUnit;
+                break;
+
+              case 'per_table':
+                // ④ テーブル固定型：人数に関係なく1卓につき固定量
+                finalAmountForThisTable = req.amountPerPerson / req.yieldPerUnit;
+                break;
+            }
+
+            // 小数のまま、食材ごとに全予約・全テーブル分をプール（合算）していく
+            rawCounts[itemId] = (rawCounts[itemId] ?? 0.0) + finalAmountForThisTable;
           });
         }
       }
     }
 
+    // ★ アルゴリズム③：すべての小数の合計値を、最後に「切り上げ（整数）」にして確定！
+    final Map<int, double> roundedCounts = {};
+    rawCounts.forEach((itemId, totalAmount) {
+      roundedCounts[itemId] = totalAmount.ceilToDouble();
+    });
+
     setState(() {
-      reservedItemCounts = counts;
+      reservedItemCounts = roundedCounts;
     });
   }
 
