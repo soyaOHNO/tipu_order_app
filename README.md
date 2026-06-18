@@ -4,6 +4,9 @@
 
 現在は紙で行っている発注チェック表をデジタル化し、発注履歴の保存や必要数量の計算を行うことを目的としています。
 
+## URL
+* ![https://tipu-order.web.app](https://tipu-order.web.app)
+
 ## 主な機能
 
 * 商品ごとの発注数入力
@@ -50,3 +53,24 @@
 * Flutter
 * Dart
 * ローカルデータベース
+
+
+## Build
+* flutter build web --release
+* firebase init hosting
+What do you want to use as your public directory? (公開フォルダはどこにする？)
+👉 build/web と入力してエンター（※デフォルトの public のままにしないよう注意！）
+
+Configure as a single-page app (rewrite all urls to /index.html)?
+👉 y (Yes)
+
+Set up automatic builds and deploys with GitHub?
+👉 n (No)
+
+File build/web/index.html already exists. Overwrite? (上書きする？)
+👉 n (No！絶対に上書きしないでください。Flutterが作った index.html が消えてしまいます)
+* firebase deploy --only hosting
+
+## Update
+* flutter build web --release
+* firebase deploy --only hosting
