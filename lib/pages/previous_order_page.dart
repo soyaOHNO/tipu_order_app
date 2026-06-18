@@ -1,7 +1,6 @@
-import 'dart:io';
-import 'package:path_provider/path_provider.dart';
-import '../data/item_data.dart';
 import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart'; // ★ dart:io の代わりにFirestoreを導入
+import '../data/item_data.dart';
 
 class PreviousOrderPage extends StatefulWidget {
   const PreviousOrderPage({super.key});
@@ -13,7 +12,6 @@ class PreviousOrderPage extends StatefulWidget {
 class _PreviousOrderPageState extends State<PreviousOrderPage> {
   // 構造化した日付データ管理用: { '2026': { '06': ['15', '16'] } }
   Map<String, Map<String, List<String>>> dateStructure = {};
-  Map<String, String> filePaths = {}; // '2026-06-16' -> 実際のフルパス
 
   String? selectedYear;
   String? selectedMonth;
@@ -24,160 +22,152 @@ class _PreviousOrderPageState extends State<PreviousOrderPage> {
   @override
   void initState() {
     super.initState();
-    loadCsvFileList();
+    loadFirestoreOrderList(); // ★起動時にFirestoreから履歴リストを読み込む
   }
 
-  // フォルダ内のファイルを走査して構造化する
-  Future<void> loadCsvFileList() async {
-    final directory = await getApplicationDocumentsDirectory();
-    final baseDir = Directory('${directory.path}/みらんちぷ発注');
+  // ★ フォルダ走査の代わりに、Firestoreから全履歴のドキュメントIDを取得して構造化する
+  Future<void> loadFirestoreOrderList() async {
+    try {
+      // 履歴一覧をFirestoreから取得
+      final snapshot = await FirebaseFirestore.instance
+          .collection('order_history')
+          .get();
 
-    final Map<String, Map<String, List<String>>> structure = {};
-    final Map<String, String> paths = {};
+      final Map<String, Map<String, List<String>>> structure = {};
 
-    if (await baseDir.exists()) {
-      final List<FileSystemEntity> files = baseDir.listSync(recursive: true);
-      for (final file in files) {
-        if (file is File && file.path.endsWith('.csv')) {
-          final fileName = file.uri.pathSegments.last.replaceAll('.csv', '');
-          final parts = fileName.split('-');
-          
-          if (parts.length == 3) {
-            final year = parts[0];
-            final month = parts[1];
-            final day = parts[2];
+      for (final doc in snapshot.docs) {
+        // ドキュメントIDが "2026-06-18" のような文字列になっている
+        final dateKey = doc.id;
+        final parts = dateKey.split('-');
+        
+        if (parts.length == 3) {
+          final year = parts[0];
+          final month = parts[1];
+          final day = parts[2];
 
-            structure.putIfAbsent(year, () => {});
-            structure[year]!.putIfAbsent(month, () => []);
-            if (!structure[year]![month]!.contains(day)) {
-              structure[year]![month]!.add(day);
-            }
-
-            paths[fileName] = file.path;
+          structure.putIfAbsent(year, () => {});
+          structure[year]!.putIfAbsent(month, () => []);
+          if (!structure[year]![month]!.contains(day)) {
+            structure[year]![month]!.add(day);
           }
         }
       }
+
+      // 選択しやすいように、年・月・日すべてを降順（新しい順）に並び替える（既存の優秀なロジックをそのまま流用）
+      final sortedYears = structure.keys.toList()..sort((a, b) => b.compareTo(a));
+      final Map<String, Map<String, List<String>>> sortedStructure = {};
+      
+      for (final year in sortedYears) {
+        final months = structure[year]!.keys.toList()..sort((a, b) => b.compareTo(a));
+        sortedStructure[year] = {};
+        for (final month in months) {
+          final days = structure[year]![month]!..sort((a, b) => b.compareTo(a));
+          sortedStructure[year]![month] = days;
+        }
+      }
+
+      if (sortedStructure.isNotEmpty) {
+        // デフォルト値の決定（現在の1日前 = 昨日）
+        final yesterday = DateTime.now().subtract(const Duration(days: 1));
+        final defaultYear = yesterday.year.toString();
+        final defaultMonth = yesterday.month.toString().padLeft(2, '0');
+        final defaultDay = yesterday.day.toString().padLeft(2, '0');
+
+        String year = sortedStructure.keys.first;
+        if (sortedStructure.containsKey(defaultYear)) {
+          year = defaultYear;
+        }
+
+        String month = sortedStructure[year]!.keys.first;
+        if (sortedStructure[year]!.containsKey(defaultMonth)) {
+          month = defaultMonth;
+        }
+
+        String day = sortedStructure[year]![month]!.first;
+        if (sortedStructure[year]![month]!.contains(defaultDay)) {
+          day = defaultDay;
+        }
+
+        setState(() {
+          dateStructure = sortedStructure;
+          selectedYear = year;
+          selectedMonth = month;
+          selectedDay = day;
+        });
+
+        await updateContent();
+      } else {
+        _clearState();
+      }
+    } catch (e) {
+      debugPrint('履歴リストの取得に失敗しました: $e');
+      _clearState();
     }
+  }
 
-    // 選択しやすいように、年・月・日すべてを降順（新しい順）に並び替える
-    final sortedYears = structure.keys.toList()..sort((a, b) => b.compareTo(a));
-    final Map<String, Map<String, List<String>>> sortedStructure = {};
-    
-    for (final year in sortedYears) {
-      final months = structure[year]!.keys.toList()..sort((a, b) => b.compareTo(a));
-      sortedStructure[year] = {};
-      for (final month in months) {
-        final days = structure[year]![month]!..sort((a, b) => b.compareTo(a));
-        sortedStructure[year]![month] = days;
-      }
-    }
-
-    if (sortedStructure.isNotEmpty) {
-      // デフォルト値の決定（現在の1日前 = 昨日）
-      final yesterday = DateTime.now().subtract(const Duration(days: 1));
-      final defaultYear = yesterday.year.toString();
-      final defaultMonth = yesterday.month.toString().padLeft(2, '0');
-      final defaultDay = yesterday.day.toString().padLeft(2, '0');
-
-      // 昨日のデータがあればそれを第一候補に、なければ存在する最新のデータを取る
-      String year = sortedStructure.keys.first;
-      if (sortedStructure.containsKey(defaultYear)) {
-        year = defaultYear;
-      }
-
-      String month = sortedStructure[year]!.keys.first;
-      if (sortedStructure[year]!.containsKey(defaultMonth)) {
-        month = defaultMonth;
-      }
-
-      String day = sortedStructure[year]![month]!.first;
-      if (sortedStructure[year]![month]!.contains(defaultDay)) {
-        day = defaultDay;
-      }
-
-      setState(() {
-        dateStructure = sortedStructure;
-        filePaths = paths;
-        selectedYear = year;
-        selectedMonth = month;
-        selectedDay = day;
-      });
-
-      await updateContent();
-    } else {
-      setState(() {
-        dateStructure = {};
-        filePaths = {};
-        selectedYear = null;
-        selectedMonth = null;
-        selectedDay = null;
-        parsedOrders = [];
-      });
-    }
+  void _clearState() {
+    setState(() {
+      dateStructure = {};
+      selectedYear = null;
+      selectedMonth = null;
+      selectedDay = null;
+      parsedOrders = [];
+    });
   }
 
   // 選択された年・月・日からデータを更新する
   Future<void> updateContent() async {
     if (selectedYear == null || selectedMonth == null || selectedDay == null) return;
     final dateKey = '$selectedYear-$selectedMonth-$selectedDay';
-    await loadCsvContent(dateKey);
+    await loadFirestoreContent(dateKey);
   }
 
-  Future<void> loadCsvContent(String dateString) async {
-    final filePath = filePaths[dateString];
-    if (filePath == null) {
+  // ★ 指定された日付のドキュメントをFirestoreから1発で引いてくる関数
+  Future<void> loadFirestoreContent(String dateString) async {
+    try {
+      final doc = await FirebaseFirestore.instance
+          .collection('order_history')
+          .doc(dateString)
+          .get();
+
+      if (!doc.exists) {
+        setState(() {
+          parsedOrders = [];
+        });
+        return;
+      }
+
+      final data = doc.data();
+      if (data == null || data['orders'] == null) return;
+
+      final List<dynamic> ordersRaw = data['orders'];
+      final List<Map<String, dynamic>> loadedOrders = [];
+
+      for (final o in ordersRaw) {
+        loadedOrders.add({
+          'id': o['id'] ?? 0,
+          'quantity': (o['quantity'] as num?)?.toDouble() ?? 0.0,
+        });
+      }
+
+      setState(() {
+        parsedOrders = loadedOrders;
+      });
+    } catch (e) {
+      debugPrint('特定日付の履歴取得に失敗しました: $e');
       setState(() {
         parsedOrders = [];
       });
-      return;
     }
-
-    final file = File(filePath);
-    if (!await file.exists()) return;
-
-    final csvString = await file.readAsString();
-    final lines = csvString.split('\n');
-    final List<Map<String, dynamic>> loadedOrders = [];
-
-    for (int i = 1; i < lines.length; i++) {
-      final line = lines[i].trim();
-      if (line.isEmpty) continue;
-
-      final cells = line.split(',');
-      if (cells.length >= 2) {
-        final id = int.tryParse(cells[0]);
-        final quantityText = cells[1];
-
-        if (id != null) {
-          double quantity = 0.0;
-          if (quantityText == '1/2') {
-            quantity = 0.5;
-          } else {
-            quantity = double.tryParse(quantityText) ?? 0.0;
-          }
-
-          loadedOrders.add({
-            'id': id,
-            'quantity': quantity,
-          });
-        }
-      }
-    }
-
-    setState(() {
-      parsedOrders = loadedOrders;
-    });
   }
 
   @override
   Widget build(BuildContext context) {
-    // 選択された年に存在する月の選択肢
     List<String> months = [];
     if (selectedYear != null && dateStructure.containsKey(selectedYear)) {
       months = dateStructure[selectedYear]!.keys.toList();
     }
 
-    // 選択された年・月に存在する日の選択肢
     List<String> days = [];
     if (selectedYear != null && selectedMonth != null && 
         dateStructure[selectedYear]?.containsKey(selectedMonth) == true) {
@@ -204,7 +194,6 @@ class _PreviousOrderPageState extends State<PreviousOrderPage> {
                     }).toList(),
                     onChanged: (value) {
                       if (value != null) {
-                        // 年が変わったら、その年にある最新の月・日へ連動安全切り替え
                         final nextMonths = dateStructure[value]!.keys.toList();
                         final nextMonth = nextMonths.first;
                         final nextDays = dateStructure[value]![nextMonth]!;
@@ -224,13 +213,11 @@ class _PreviousOrderPageState extends State<PreviousOrderPage> {
                   DropdownButton<String>(
                     value: selectedMonth,
                     items: months.map((month) {
-                      // 見栄えのために '06' を '6' にして表示
                       final displayMonth = int.tryParse(month)?.toString() ?? month;
                       return DropdownMenuItem(value: month, child: Text(displayMonth));
                     }).toList(),
                     onChanged: (value) {
                       if (value != null) {
-                        // 月が変わったら、その月にある最新の日へ連動安全切り替え
                         final nextDays = dateStructure[selectedYear]![value]!;
                         final nextDay = nextDays.first;
                         setState(() {
@@ -247,7 +234,6 @@ class _PreviousOrderPageState extends State<PreviousOrderPage> {
                   DropdownButton<String>(
                     value: selectedDay,
                     items: days.map((day) {
-                      // 見栄えのために '09' を '9' にして表示
                       final displayDay = int.tryParse(day)?.toString() ?? day;
                       return DropdownMenuItem(value: day, child: Text(displayDay));
                     }).toList(),
@@ -288,18 +274,13 @@ class _PreviousOrderPageState extends State<PreviousOrderPage> {
                   final quantity = order['quantity'] as double;
 
                   return Padding(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 16,
-                      vertical: 4,
-                    ),
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
                     child: Text(
                       '${item.name} × '
                       '${quantity == 0.5 ? '1/2' : quantity.toStringAsFixed(
                           quantity == quantity.toInt() ? 0 : 1,
                         )}',
-                      style: const TextStyle(
-                        fontSize: 18,
-                      ),
+                      style: const TextStyle(fontSize: 18),
                     ),
                   );
                 },

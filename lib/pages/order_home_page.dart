@@ -1,8 +1,7 @@
 import 'dart:convert';
-import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:path_provider/path_provider.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 import '../data/item_data.dart';
 import '../models/order_item.dart';
@@ -43,7 +42,6 @@ class _OrderHomePageState extends State<OrderHomePage> with WidgetsBindingObserv
     await _calculateReservedItems();
   }
 
-  // ★アップデート：名前ベースではなくIDベースの連携で動く自動計算
   Future<void> _calculateReservedItems() async {
     final todayReservations = await fetchTodayReservations();
     final Map<int, double> rawCounts = {};
@@ -53,7 +51,6 @@ class _OrderHomePageState extends State<OrderHomePage> with WidgetsBindingObserv
 
       int courseIdx = -1;
       for (int i = 0; i < courseRecipes.length; i++) {
-        // コース自体が論理削除されておらず、かつToretaのキーワードが含まれているか
         if (courseRecipes[i].alive && res.memo.contains(courseRecipes[i].toretaKeyword)) {
           courseIdx = i;
           break; 
@@ -72,16 +69,13 @@ class _OrderHomePageState extends State<OrderHomePage> with WidgetsBindingObserv
         tables[i] += 1;
       }
 
-      // ★変更：course.dishNames ではなく course.dishIds でループする
       for (final dishId in course.dishIds) {
-        // IDで検索し、かつ論理削除されていない(alive: true)料理だけを計算に含める
         final dishIdx = dishes.indexWhere((d) => d.id == dishId && d.alive);
         if (dishIdx == -1) continue;
         final dish = dishes[dishIdx];
 
         for (final p in tables) {
           dish.requiredItems.forEach((itemId, req) {
-            // もし食材自体が論理削除されていたらスキップする安全策
             final isItemAlive = items.any((i) => i.id == itemId && i.alive);
             if (!isItemAlive) return;
 
@@ -125,7 +119,6 @@ class _OrderHomePageState extends State<OrderHomePage> with WidgetsBindingObserv
                 finalAmountForThisTable = req.amountPerPerson / req.yieldPerUnit;
                 break;
             }
-
             rawCounts[itemId] = (rawCounts[itemId] ?? 0.0) + finalAmountForThisTable;
           });
         }
@@ -163,11 +156,17 @@ class _OrderHomePageState extends State<OrderHomePage> with WidgetsBindingObserv
         '${businessDate.month.toString().padLeft(2, '0')}-'
         '${businessDate.day.toString().padLeft(2, '0')}';
 
-    if (lastDate != currentDate && lastDate != null) {
-      await saveOrderLogAsCsv(lastDate);
+    if (lastDate == null) {
+      // ★修正箇所：初回起動時は「今日」を基準日として保存するだけ
+      await saveLastBusinessDate();
+      debugPrint('初回起動：営業日を $currentDate に設定しました');
+    } else if (lastDate != currentDate) {
+      // 日付が変わっていたらFirebaseへ送信＆リセット
+      await saveOrderLogToFirebase(lastDate); // 昨日の日付で保存
       await savePreviousOrder();
       await clearOrders();
-      await saveLastBusinessDate();
+      await saveLastBusinessDate(); // 基準日を「今日」に更新
+      debugPrint('日付更新：$lastDate のデータを送信し、$currentDate にリセットしました');
     }
   }
 
@@ -211,35 +210,32 @@ class _OrderHomePageState extends State<OrderHomePage> with WidgetsBindingObserv
     await prefs.setString('previous_order_date', DateTime.now().toIso8601String());
   }
 
-  Future<void> saveOrderLogAsCsv(String targetDate) async {
+  Future<void> saveOrderLogToFirebase(String targetDate) async {
     final orderedItems = orders.where((o) => o.quantity > 0).toList();
     if (orderedItems.isEmpty) return; 
 
-    final buffer = StringBuffer();
-    buffer.writeln('id,quantity');
+    final List<Map<String, dynamic>> orderData = orderedItems.map((order) {
+      return {
+        'id': order.item.id,
+        'name': order.item.name,
+        'quantity': order.quantity,
+      };
+    }).toList();
 
-    for (final order in orderedItems) {
-      final quantityText = order.quantity == 0.5
-          ? '1/2'
-          : order.quantity.toStringAsFixed(
-              order.quantity == order.quantity.toInt() ? 0 : 1,
-            );
-      buffer.writeln('${order.item.id},$quantityText');
+    try {
+      await FirebaseFirestore.instance
+          .collection('order_history')
+          .doc(targetDate)
+          .set({
+            'date': targetDate,
+            'timestamp': FieldValue.serverTimestamp(),
+            'total_items': orderedItems.length,
+            'orders': orderData,
+          });
+      debugPrint('Firebaseに発注履歴を保存しました: $targetDate');
+    } catch (e) {
+      debugPrint('Firebaseへの保存に失敗しました: $e');
     }
-
-    final directory = await getApplicationDocumentsDirectory();
-    final parts = targetDate.split('-');
-    if (parts.length != 3) return;
-    final year = parts[0];
-    final month = parts[1];
-
-    final targetDir = Directory('${directory.path}/みらんちぷ発注/$year/$month');
-    if (!await targetDir.exists()) {
-      await targetDir.create(recursive: true);
-    }
-    
-    final file = File('${targetDir.path}/$targetDate.csv');
-    await file.writeAsString(buffer.toString());
   }
 
   Future<void> clearOrders() async {
@@ -362,6 +358,24 @@ class _OrderHomePageState extends State<OrderHomePage> with WidgetsBindingObserv
                           
                           const Spacer(),
                           
+                          // ★復活：マイナスボタン
+                          IconButton(
+                            icon: const Icon(Icons.remove_circle_outline),
+                            color: Colors.blueGrey,
+                            onPressed: order.quantity > 0 
+                              ? () {
+                                  setState(() {
+                                    if (order.quantity >= 1.0) {
+                                      order.quantity -= 1.0;
+                                    } else {
+                                      order.quantity = 0.0;
+                                    }
+                                  });
+                                  saveOrders();
+                                }
+                              : null, // 0の時は押せない（グレーアウト）
+                          ),
+                          
                           DropdownButton<double>(
                             value: order.quantity,
                             items: quantities.map((q) {
@@ -379,6 +393,7 @@ class _OrderHomePageState extends State<OrderHomePage> with WidgetsBindingObserv
                               }
                             },
                           ),
+                          
                           IconButton(
                             icon: const Icon(Icons.add_circle_outline),
                             color: Theme.of(context).colorScheme.primary,

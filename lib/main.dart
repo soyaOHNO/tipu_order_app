@@ -1,5 +1,8 @@
 // flutter run -d windows
 import 'package:flutter/material.dart';
+import 'package:firebase_core/firebase_core.dart'; // ★追加
+import 'firebase_options.dart'; // ★追加 (flutterfire configureで生成されたファイル)
+
 import 'pages/order_home_page.dart';
 import 'data/item_data.dart';
 import 'pages/master_edit_page.dart';
@@ -12,12 +15,19 @@ import 'pages/dish_edit_page.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   
+  // ★追加：Firebaseの初期化
+  await Firebase.initializeApp(
+    options: DefaultFirebaseOptions.currentPlatform,
+  );
+  
   await loadItemMaster(); 
   await loadDishes();
   await loadCourseRecipes();
   
   runApp(const MyApp());
 }
+
+// ...以下、既存の MyApp や TopMenuPage のコードはそのまま
 
 class MyApp extends StatelessWidget {
   const MyApp({super.key});

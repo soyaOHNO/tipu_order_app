@@ -61,10 +61,10 @@ class _DishEditPageState extends State<DishEditPage> {
                         value: selectedCalcType,
                         decoration: const InputDecoration(labelText: '自動計算のタイプ', border: OutlineInputBorder()),
                         items: const [
-                          DropdownMenuItem(value: 'proportion', child: Text('人数比例・増減型 (サラダ・キムチ等)')),
-                          DropdownMenuItem(value: 'per_person', child: Text('人数＝個数型 (タン・サンチュ等)')),
-                          DropdownMenuItem(value: 'step', child: Text('段階・しきい値型 (冷麺・クッパ等)')),
-                          DropdownMenuItem(value: 'per_table', child: Text('テーブル固定型 (肉ケーキ等)')),
+                          DropdownMenuItem(value: 'proportion', child: Text('人数比例・増減型')),
+                          DropdownMenuItem(value: 'per_person', child: Text('人数＝個数型')),
+                          DropdownMenuItem(value: 'step', child: Text('段階・しきい値型')),
+                          DropdownMenuItem(value: 'per_table', child: Text('テーブル固定型')),
                         ],
                         onChanged: (val) {
                           if (val != null) setStateDialog(() => selectedCalcType = val);

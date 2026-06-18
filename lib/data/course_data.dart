@@ -1,17 +1,14 @@
-import 'dart:convert';
-import 'dart:io';
-import 'package:path_provider/path_provider.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/course_recipe.dart';
 
 List<CourseRecipe> courseRecipes = [];
 
 Future<void> loadCourseRecipes() async {
-  final directory = await getApplicationDocumentsDirectory();
-  final file = File('${directory.path}/みらんちぷ発注/マスタ/course_recipes.json');
+  final snapshot = await FirebaseFirestore.instance.collection('master_courses').get();
 
-  if (!await file.exists()) {
+  if (snapshot.docs.isEmpty) {
+    // Firestoreが空の初回起動時は、初期データをセットしてFirestoreへ一括保存
     courseRecipes = [
-      // ★ dishNames ではなく、料理の「ID(数値)」で紐付ける
       CourseRecipe(id: 1, courseName: '赤天', toretaKeyword: '赤身天国コース', dishIds: [1, 6, 3, 4]),
       CourseRecipe(id: 2, courseName: 'みらん', toretaKeyword: 'ミランコース', dishIds: [7, 1, 8, 2, 9, 10]),
       CourseRecipe(id: 3, courseName: 'スペシャル', toretaKeyword: 'スペシャルコース', dishIds: [1, 6, 8, 2, 9, 4]),
@@ -22,15 +19,20 @@ Future<void> loadCourseRecipes() async {
     ];
     await saveCourseRecipesToLocal();
   } else {
-    final jsonString = await file.readAsString();
-    final List<dynamic> decodedList = jsonDecode(jsonString);
-    courseRecipes = decodedList.map((json) => CourseRecipe.fromJson(json)).toList();
+    // Firestoreから取得し、ID順に並び替える（順不同対策）
+    courseRecipes = snapshot.docs.map((doc) => CourseRecipe.fromJson(doc.data())).toList();
+    courseRecipes.sort((a, b) => a.id.compareTo(b.id));
   }
 }
 
 Future<void> saveCourseRecipesToLocal() async {
-  final directory = await getApplicationDocumentsDirectory();
-  final file = File('${directory.path}/みらんちぷ発注/マスタ/course_recipes.json');
-  final List<Map<String, dynamic>> jsonList = courseRecipes.map((c) => c.toJson()).toList();
-  await file.writeAsString(jsonEncode(jsonList));
+  final db = FirebaseFirestore.instance;
+  final batch = db.batch(); // ★高速一括保存（WriteBatch）を使用
+  final collection = db.collection('master_courses');
+
+  for (final course in courseRecipes) {
+    // ドキュメントIDをコースのIDにして保存
+    batch.set(collection.doc(course.id.toString()), course.toJson());
+  }
+  await batch.commit();
 }
