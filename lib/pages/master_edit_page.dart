@@ -204,7 +204,7 @@ class _MasterEditPageState extends State<MasterEditPage> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('商品マスタ編集'),
+        title: const Text('商品マスタ編集(ver1.2)'),
       ),
       body: ListView.builder(
         itemCount: activeItems.length,
