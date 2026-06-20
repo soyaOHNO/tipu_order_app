@@ -1,5 +1,4 @@
-import 'dart:async'; // ★追加：Timer と StreamSubscription 用
-import 'dart:convert';
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
