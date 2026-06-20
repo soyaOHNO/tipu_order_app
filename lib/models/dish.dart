@@ -27,12 +27,13 @@ class DishItemRequirement {
 }
 
 class Dish {
-  final int id; // ★追加：名前が変わっても追跡できる一意のID
+  final int id;
   String name;
   String calcType;
   String memo;
   Map<int, DishItemRequirement> requiredItems;
-  bool alive; // ★追加：論理削除フラグ（過去のデータを消さずに隠す）
+  bool alive;
+  String specialRule; // ★追加：特例ルールの識別子（'none', 'sanchu_2p', 'reimen_step' など）
 
   Dish({
     required this.id,
@@ -40,7 +41,8 @@ class Dish {
     required this.calcType,
     required this.memo,
     required this.requiredItems,
-    this.alive = true, // デフォルトは有効
+    this.alive = true,
+    this.specialRule = 'none', // デフォルトは特例なし
   });
 
   factory Dish.fromJson(Map<String, dynamic> json) {
@@ -54,12 +56,13 @@ class Dish {
       });
     }
     return Dish(
-      id: json['id'] ?? 0, // ★追加
+      id: json['id'] ?? 0,
       name: json['name'] ?? '',
       calcType: json['calcType'] ?? 'proportion',
       memo: json['memo'] ?? '',
       requiredItems: itemsMap,
-      alive: json['alive'] ?? true, // ★追加
+      alive: json['alive'] ?? true,
+      specialRule: json['specialRule'] ?? 'none', // ★追加
     );
   }
 
@@ -69,12 +72,13 @@ class Dish {
       itemsJson[key.toString()] = value.toJson();
     });
     return {
-      'id': id, // ★追加
+      'id': id,
       'name': name,
       'calcType': calcType,
       'memo': memo,
       'requiredItems': itemsJson,
-      'alive': alive, // ★追加
+      'alive': alive,
+      'specialRule': specialRule, // ★追加
     };
   }
 }

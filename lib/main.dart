@@ -1,7 +1,9 @@
-// flutter run -d windows
+// flutter run -d chrome
 import 'package:flutter/material.dart';
-import 'package:firebase_core/firebase_core.dart'; // ★追加
-import 'firebase_options.dart'; // ★追加 (flutterfire configureで生成されたファイル)
+import 'package:firebase_core/firebase_core.dart';
+import 'firebase_options.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 import 'pages/order_home_page.dart';
 import 'data/item_data.dart';
@@ -20,6 +22,9 @@ void main() async {
     options: DefaultFirebaseOptions.currentPlatform,
   );
   
+  // ★追加：Firestoreのローカルキャッシュを有効化（オフライン対応）
+  FirebaseFirestore.instance.settings = const Settings(persistenceEnabled: true);
+  
   await loadItemMaster(); 
   await loadDishes();
   await loadCourseRecipes();
@@ -27,7 +32,7 @@ void main() async {
   runApp(const MyApp());
 }
 
-// ...以下、既存の MyApp や TopMenuPage のコードはそのまま
+
 
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
@@ -89,12 +94,32 @@ class TopMenuPage extends StatelessWidget {
               },
             ),
 
-            // 3. マスタ再読み込み（同期システム：灰色）
+            // 3. キャッシュクリア（赤色・確認ダイアログ付き）
             MenuButton(
-              title: '各マスタを書き換えたらここを押して反映',
-              icon: Icons.sync,
-              color: Colors.grey,
+              title: 'キャッシュクリア\n(マスタ再読み込み)',
+              icon: Icons.cleaning_services,
+              color: Colors.redAccent,
               onTap: () async {
+                // 間違えて押さないように確認ダイアログを表示
+                final confirm = await showDialog<bool>(
+                  context: context,
+                  builder: (_) => AlertDialog(
+                    title: const Text('キャッシュクリアの確認'),
+                    content: const Text('端末に保存されているメモやキャッシュを消去し、マスタデータを最新の状態に再読み込みします。\n（※現在入力中の発注データは消えません）\n\n本当によろしいですか？'),
+                    actions: [
+                      TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('キャンセル')),
+                      TextButton(onPressed: () => Navigator.pop(context, true), child: const Text('実行', style: TextStyle(color: Colors.red))),
+                    ],
+                  ),
+                );
+
+                if (confirm != true) return; // キャンセルされたら処理を中断
+
+                // ① ローカルのキャッシュ（メモや日付データなど）を全て削除
+                final prefs = await SharedPreferences.getInstance();
+                await prefs.clear();
+
+                // ② 各マスタデータをFirestoreから再読み込み
                 await loadItemMaster();
                 await loadDishes();
                 await loadCourseRecipes();
@@ -102,7 +127,7 @@ class TopMenuPage extends StatelessWidget {
                 if (context.mounted) {
                   ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(
-                      content: Text('マスタデータを最新のCSVから読み込みました！'),
+                      content: Text('キャッシュをクリアし、マスタデータを最新にしました！'),
                       backgroundColor: Colors.green,
                     ),
                   );

@@ -30,15 +30,8 @@ class BoardPage extends StatelessWidget {
         itemBuilder: (context, index) {
           final order = boardOrders[index];
 
-          final quantityText =
-              order.quantity == 0.5
-                  ? '1/2'
-                  : order.quantity.toStringAsFixed(
-                      order.quantity ==
-                              order.quantity.toInt()
-                          ? 0
-                          : 1,
-                    );
+          // ★ 変更：拡張メソッドを呼ぶだけ
+          final quantityText = order.quantity.toDisplayString();
 
           return Padding(
             padding: const EdgeInsets.symmetric(

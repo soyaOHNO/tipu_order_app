@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart'; // ★ dart:io の代わりにFirestoreを導入
 import '../data/item_data.dart';
+import '../models/order_item.dart';
 
 class PreviousOrderPage extends StatefulWidget {
   const PreviousOrderPage({super.key});
@@ -276,10 +277,7 @@ class _PreviousOrderPageState extends State<PreviousOrderPage> {
                   return Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
                     child: Text(
-                      '${item.name} × '
-                      '${quantity == 0.5 ? '1/2' : quantity.toStringAsFixed(
-                          quantity == quantity.toInt() ? 0 : 1,
-                        )}',
+                      '${item.name} × ${quantity.toDisplayString()}',
                       style: const TextStyle(fontSize: 18),
                     ),
                   );

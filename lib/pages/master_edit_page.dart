@@ -12,7 +12,6 @@ class MasterEditPage extends StatefulWidget {
 }
 
 class _MasterEditPageState extends State<MasterEditPage> {
-  // ★ ここにあった _saveMasterToCsv() は不要になったため丸ごと削除しました
 
   // 編集・追加ダイアログを表示する関数
   void _showEditDialog({Item? existingItem}) {
@@ -30,6 +29,14 @@ class _MasterEditPageState extends State<MasterEditPage> {
         return StatefulBuilder(
           builder: (context, setStateDialog) {
             final deadItems = items.where((e) => !e.alive).toList();
+
+            // ★ 追加：現在登録されている有効な商品から、カテゴリの一覧を重複なく抽出
+            final existingCategories = items
+                .where((e) => e.alive)
+                .map((e) => e.category.trim())
+                .toSet()
+                .where((c) => c.isNotEmpty)
+                .toList();
 
             return AlertDialog(
               title: Text(isNew ? '商品の追加' : '商品の編集'),
@@ -70,10 +77,62 @@ class _MasterEditPageState extends State<MasterEditPage> {
                       controller: minController,
                       decoration: const InputDecoration(labelText: '最低数 (例: 2パック)'),
                     ),
+                    
+                    // --- カテゴリ入力・選択エリア ---
                     TextField(
                       controller: catController,
                       decoration: const InputDecoration(labelText: 'カテゴリ (例: 冷蔵庫(左上))'),
+                      onChanged: (text) {
+                        // 手動入力された文字に合わせてチップの選択表示をリアルタイムに切り替える
+                        setStateDialog(() {});
+                      },
                     ),
+                    const SizedBox(height: 8),
+                    if (existingCategories.isNotEmpty) ...[
+                      const Align(
+                        alignment: Alignment.centerLeft,
+                        child: Text(
+                          '登録済みのカテゴリから選択:',
+                          style: TextStyle(fontSize: 12, color: Colors.grey, fontWeight: FontWeight.bold),
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: Wrap(
+                          spacing: 8.0,
+                          runSpacing: 6.0,
+                          children: existingCategories.map((category) {
+                            final isSelected = catController.text.trim() == category;
+                            return ChoiceChip(
+                              label: Text(
+                                category, 
+                                style: TextStyle(
+                                  fontSize: 12, 
+                                  color: isSelected ? Colors.white : Colors.black87,
+                                  fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                                ),
+                              ),
+                              selected: isSelected,
+                              selectedColor: Theme.of(context).colorScheme.primary,
+                              backgroundColor: Colors.grey.shade200,
+                              onSelected: (bool selected) {
+                                setStateDialog(() {
+                                  if (selected) {
+                                    catController.text = category;
+                                  } else {
+                                    catController.text = '';
+                                  }
+                                });
+                              },
+                            );
+                          }).toList(),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                    ],
+                    // ---------------------------------
+
                     DropdownButtonFormField<OrderType>(
                       value: selectedType,
                       decoration: const InputDecoration(labelText: '発注担当'),
@@ -126,7 +185,6 @@ class _MasterEditPageState extends State<MasterEditPage> {
                             alive: false,
                           );
                         }
-                        // ★ Firestoreへ一括保存する関数に差し替え
                         await saveItemMasterToLocal();
                         if (context.mounted) Navigator.pop(context); 
                         setState(() {}); 
@@ -183,7 +241,6 @@ class _MasterEditPageState extends State<MasterEditPage> {
                       }
                     }
 
-                    // ★ Firestoreへ一括保存する関数に差し替え
                     await saveItemMasterToLocal();
                     if (context.mounted) Navigator.pop(context);
                     setState(() {}); 
@@ -204,7 +261,7 @@ class _MasterEditPageState extends State<MasterEditPage> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('商品マスタ編集(ver1.2)'),
+        title: const Text('商品マスタ編集'),
       ),
       body: ListView.builder(
         itemCount: activeItems.length,

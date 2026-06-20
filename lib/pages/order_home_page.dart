@@ -1,6 +1,6 @@
+import 'dart:async'; // ★追加：Timer と StreamSubscription 用
 import 'dart:convert';
 import 'package:flutter/material.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 import '../data/item_data.dart';
@@ -11,6 +11,7 @@ import 'previous_order_page.dart';
 import '../data/reservation_data.dart';
 import '../data/course_data.dart';
 import '../data/dish_data.dart';
+import 'memo_page.dart';
 
 class OrderHomePage extends StatefulWidget {
   const OrderHomePage({super.key});
@@ -22,6 +23,7 @@ class OrderHomePage extends StatefulWidget {
 class _OrderHomePageState extends State<OrderHomePage> with WidgetsBindingObserver {
   late List<OrderItem> orders;
   Map<int, double> reservedItemCounts = {};
+  StreamSubscription<DocumentSnapshot>? _orderStream; // ★追加：リアルタイム同期用の監視
 
   @override
   void initState() {
@@ -37,11 +39,57 @@ class _OrderHomePageState extends State<OrderHomePage> with WidgetsBindingObserv
   }
 
   Future<void> initializeApp() async {
-    await loadOrders();
+    // 1. まず日付チェックとリセット処理を確定させる
     await checkBusinessDay();
+    // 2. その後、Firestoreのリアルタイム監視を開始
+    _listenToOrders();
+    // 3. トレタ連携（デモ）の計算
     await _calculateReservedItems();
   }
 
+  // ★追加：Firestoreからのリアルタイム受信
+  void _listenToOrders() {
+    _orderStream = FirebaseFirestore.instance.collection('working_orders').doc('current').snapshots().listen((snapshot) {
+      if (snapshot.exists && snapshot.data() != null) {
+        final data = snapshot.data()!;
+        bool needsRebuild = false;
+
+        for (final order in orders) {
+          final itemData = data[order.item.id.toString()];
+          if (itemData != null) {
+            final newQ = (itemData['quantity'] as num?)?.toDouble() ?? 0.0;
+            final newS = itemData['inStock'] ?? false;
+            
+            // 自分の端末以外から変更があった場合のみUIを更新する
+            if (order.quantity != newQ || order.inStock != newS) {
+              order.quantity = newQ;
+              order.inStock = newS;
+              needsRebuild = true;
+            }
+          }
+        }
+        if (needsRebuild && mounted) {
+          setState(() {}); // 外部からの変更があった時だけ全体を再描画
+        }
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _orderStream?.cancel(); // 画面を閉じる時に監視を解除
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      checkBusinessDay();
+    }
+  }
+
+  // ★修正：ハードコードを排除し specialRule で計算
   Future<void> _calculateReservedItems() async {
     final todayReservations = await fetchTodayReservations();
     final Map<int, double> rawCounts = {};
@@ -94,7 +142,7 @@ class _OrderHomePageState extends State<OrderHomePage> with WidgetsBindingObserv
 
               case 'per_person':
                 int pieces = p;
-                if (dish.name == 'サンチュ' && p == 2) {
+                if (dish.specialRule == 'sanchu_2p' && p == 2) {
                   pieces = 4;
                 }
                 finalAmountForThisTable = (pieces * req.amountPerPerson) / req.yieldPerUnit;
@@ -102,12 +150,12 @@ class _OrderHomePageState extends State<OrderHomePage> with WidgetsBindingObserv
 
               case 'step':
                 double stepCount = 1.0;
-                if (dish.name == '盛岡冷麺') {
+                if (dish.specialRule == 'reimen_step') {
                   if (p <= 2) stepCount = 0.5;
                   else if (p <= 4) stepCount = 1.0;
                   else if (p == 5) stepCount = 1.5;
                   else if (p <= 7) stepCount = 2.0;
-                } else if (dish.name == 'クッパ') {
+                } else if (dish.specialRule == 'kuppa_step') {
                   stepCount = (p >= 2 && p <= 4) ? 1.0 : 2.0;
                 } else {
                   stepCount = p.toDouble();
@@ -135,21 +183,15 @@ class _OrderHomePageState extends State<OrderHomePage> with WidgetsBindingObserv
     });
   }
 
-  @override
-  void dispose() {
-    WidgetsBinding.instance.removeObserver(this);
-    super.dispose();
-  }
-
-  @override
-  void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed) {
-      checkBusinessDay();
-    }
-  }
-
   Future<void> checkBusinessDay() async {
-    final lastDate = await getLastBusinessDate();
+    final docRef = FirebaseFirestore.instance.collection('working_orders').doc('current');
+    final snapshot = await docRef.get();
+    
+    String? lastDate;
+    if (snapshot.exists && snapshot.data() != null) {
+      lastDate = snapshot.data()!['business_date'] as String?;
+    }
+
     final businessDate = getBusinessDate();
     final currentDate =
         '${businessDate.year}-'
@@ -157,16 +199,12 @@ class _OrderHomePageState extends State<OrderHomePage> with WidgetsBindingObserv
         '${businessDate.day.toString().padLeft(2, '0')}';
 
     if (lastDate == null) {
-      // ★修正箇所：初回起動時は「今日」を基準日として保存するだけ
-      await saveLastBusinessDate();
-      debugPrint('初回起動：営業日を $currentDate に設定しました');
+      await clearOrders(); 
+      debugPrint('Firestore初回設定：営業日を $currentDate に設定しました');
     } else if (lastDate != currentDate) {
-      // 日付が変わっていたらFirebaseへ送信＆リセット
-      await saveOrderLogToFirebase(lastDate); // 昨日の日付で保存
-      await savePreviousOrder();
-      await clearOrders();
-      await saveLastBusinessDate(); // 基準日を「今日」に更新
-      debugPrint('日付更新：$lastDate のデータを送信し、$currentDate にリセットしました');
+      await saveOrderLogToFirebase(lastDate); 
+      await clearOrders(); 
+      debugPrint('日付更新：$lastDate のデータを確定履歴に送信し、$currentDate にリセットしました');
     }
   }
 
@@ -176,38 +214,6 @@ class _OrderHomePageState extends State<OrderHomePage> with WidgetsBindingObserv
       return now.subtract(const Duration(days: 1));
     }
     return now;
-  }
-
-  Future<String?> getLastBusinessDate() async {
-    final prefs = await SharedPreferences.getInstance();
-    return prefs.getString('last_business_date');
-  }
-
-  Future<void> saveLastBusinessDate() async {
-    final prefs = await SharedPreferences.getInstance();
-    final businessDate = getBusinessDate();
-    final dateString =
-        '${businessDate.year}-'
-        '${businessDate.month.toString().padLeft(2, '0')}-'
-        '${businessDate.day.toString().padLeft(2, '0')}';
-    await prefs.setString('last_business_date', dateString);
-  }
-
-  Future<void> saveOrders() async {
-    final prefs = await SharedPreferences.getInstance();
-    for (final order in orders) {
-      await prefs.setDouble('item_${order.item.id}', order.quantity);
-    }
-  }
-
-  Future<void> savePreviousOrder() async {
-    final prefs = await SharedPreferences.getInstance();
-    final orderedItems = orders
-        .where((o) => o.quantity > 0)
-        .map((o) => o.toJson())
-        .toList();
-    await prefs.setString('previous_order', jsonEncode(orderedItems));
-    await prefs.setString('previous_order_date', DateTime.now().toIso8601String());
   }
 
   Future<void> saveOrderLogToFirebase(String targetDate) async {
@@ -238,28 +244,50 @@ class _OrderHomePageState extends State<OrderHomePage> with WidgetsBindingObserv
     }
   }
 
-  Future<void> clearOrders() async {
-    for (final order in orders) {
-      order.quantity = 0;
-    }
-    await saveOrders();
-    setState(() {});
+  // ★追加：変更があった商品１つだけをピンポイントでFirestoreに保存する（通信量激減）
+  Future<void> updateSingleOrder(int itemId, double quantity, bool inStock) async {
+    final docRef = FirebaseFirestore.instance.collection('working_orders').doc('current');
+    
+    // SetOptions(merge: true) を使うことで、他の商品のデータを消さずに特定の項目だけを安全に更新・追加します
+    await docRef.set({
+      itemId.toString(): {
+        'quantity': quantity,
+        'inStock': inStock,
+      }
+    }, SetOptions(merge: true));
   }
 
-  Future<void> loadOrders() async {
-    final prefs = await SharedPreferences.getInstance();
+  // ★変更：すべてゼロにリセットして全体保存（強制リセットや日次更新時のみ呼ばれる）
+  Future<void> clearOrders() async {
+    final docRef = FirebaseFirestore.instance.collection('working_orders').doc('current');
+    
+    final businessDate = getBusinessDate();
+    final Map<String, dynamic> data = {
+      'business_date': '${businessDate.year}-${businessDate.month.toString().padLeft(2, '0')}-${businessDate.day.toString().padLeft(2, '0')}',
+    };
+
     for (final order in orders) {
-      order.quantity = prefs.getDouble('item_${order.item.id}') ?? 0.0;
+      order.quantity = 0.0;
+      order.inStock = false;
+      data[order.item.id.toString()] = {
+        'quantity': 0.0,
+        'inStock': false,
+      };
     }
-    setState(() {});
+    
+    await docRef.set(data);
+    setState(() {}); // 画面全体をリセット
   }
 
   @override
   Widget build(BuildContext context) {
     final categories = items.map((item) => item.category).toSet().toList();
+    if (categories.contains('裏')) {
+      categories.remove('裏');
+      categories.add('裏');
+    }
     final quantities = [
-      0.0, 0.5, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 
-      9.0, 10.0, 11.0, 12.0, 13.0, 14.0, 15.0, 20.0, 30.0
+      0.0, 0.5, 5.0, 10.0, 15.0, 20.0, 25.0, 30.0
     ];
 
     return Scaffold(
@@ -269,32 +297,30 @@ class _OrderHomePageState extends State<OrderHomePage> with WidgetsBindingObserv
           IconButton(
             icon: const Icon(Icons.history),
             onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (_) => const PreviousOrderPage()),
-              );
+              Navigator.push(context, MaterialPageRoute(builder: (_) => const PreviousOrderPage()));
+            },
+          ),
+          IconButton(
+            icon: const Icon(Icons.note_alt_outlined),
+            onPressed: () {
+              Navigator.push(context, MaterialPageRoute(builder: (_) => const MemoPage()));
             },
           ),
           IconButton(
             icon: const Icon(Icons.edit_note),
             onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (_) => BoardPage(orders: orders)),
-              );
+              Navigator.push(context, MaterialPageRoute(builder: (_) => BoardPage(orders: orders)));
             },
           ),
           IconButton(
             icon: const Icon(Icons.inventory),
             onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (_) => ChiefPage(orders: orders)),
-              );
+              Navigator.push(context, MaterialPageRoute(builder: (_) => ChiefPage(orders: orders)));
             },
           ),
         ],
       ),
+      // ★ 描画の最適化により、外側のリストが再描画されることはほぼ無くなります
       body: ListView.builder(
         itemCount: categories.length,
         itemBuilder: (context, catIndex) {
@@ -304,123 +330,205 @@ class _OrderHomePageState extends State<OrderHomePage> with WidgetsBindingObserv
           return Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              const Divider(height: 2, thickness: 1.5, indent: 0, endIndent: 0, color: Colors.black),
               Padding(
                 padding: const EdgeInsets.all(8.0),
-                child: Text(
-                  category,
-                  style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                ),
+                child: Text(category, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
               ),
+              const Divider(height: 2, thickness: 1.5, indent: 0, endIndent: 0, color: Colors.black),
+              
+              // ★変更：中身の行を専用の独立したWidget（OrderItemRow）に切り出し！
               ...categoryItems.map((order) {
                 final reserveAdd = reservedItemCounts[order.item.id];
-
-                return Column(
-                  children: [
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 4.0),
-                      child: Row(
-                        children: [
-                          Text(
-                            order.item.name,
-                            style: const TextStyle(
-                              fontSize: 16, 
-                              fontWeight: FontWeight.bold, 
-                              color: Colors.black87,
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          
-                          RichText(
-                            text: TextSpan(
-                              style: const TextStyle(
-                                color: Colors.black, 
-                                fontWeight: FontWeight.w500,
-                                fontSize: 14,
-                              ),
-                              children: [
-                                const TextSpan(text: '(最低数: '),
-                                TextSpan(text: order.item.minimum),
-                                
-                                if (reserveAdd != null) ...[
-                                  const TextSpan(text: '  '),
-                                  TextSpan(
-                                    text: '+予約分: ${reserveAdd == reserveAdd.toInt() ? reserveAdd.toInt() : reserveAdd}',
-                                    style: const TextStyle(
-                                      color: Colors.orange,
-                                      fontWeight: FontWeight.w600,
-                                    ),
-                                  ),
-                                ],
-                                const TextSpan(text: ')'),
-                              ],
-                            ),
-                          ),
-                          
-                          const Spacer(),
-                          
-                          // ★復活：マイナスボタン
-                          IconButton(
-                            icon: const Icon(Icons.remove_circle_outline),
-                            color: Colors.blueGrey,
-                            onPressed: order.quantity > 0 
-                              ? () {
-                                  setState(() {
-                                    if (order.quantity >= 1.0) {
-                                      order.quantity -= 1.0;
-                                    } else {
-                                      order.quantity = 0.0;
-                                    }
-                                  });
-                                  saveOrders();
-                                }
-                              : null, // 0の時は押せない（グレーアウト）
-                          ),
-                          
-                          DropdownButton<double>(
-                            value: order.quantity,
-                            items: quantities.map((q) {
-                              return DropdownMenuItem<double>(
-                                value: q,
-                                child: Text(q == 0.5 ? '1/2' : q.toStringAsFixed(q == q.toInt() ? 0 : 1)),
-                              );
-                            }).toList(),
-                            onChanged: (value) {
-                              if (value != null) {
-                                setState(() {
-                                  order.quantity = value;
-                                });
-                                saveOrders();
-                              }
-                            },
-                          ),
-                          
-                          IconButton(
-                            icon: const Icon(Icons.add_circle_outline),
-                            color: Theme.of(context).colorScheme.primary,
-                            onPressed: () {
-                              setState(() {
-                                order.quantity += 1.0;
-                              });
-                              saveOrders();
-                            },
-                          ),
-                        ],
-                      ),
-                    ),
-                    const Divider(
-                      height: 1, 
-                      thickness: 0.5, 
-                      indent: 16, 
-                      endIndent: 16, 
-                      color: Colors.black12,
-                    ),
-                  ],
+                return OrderItemRow(
+                  key: ValueKey(order.item.id), // 一意のキーを持たせて描画バグを防ぐ
+                  order: order,
+                  reserveAdd: reserveAdd,
+                  quantities: quantities,
+                  onUpdate: updateSingleOrder, // ピンポイント保存関数を渡す
                 );
               }),
             ],
           );
         },
       ),
+    );
+  }
+}
+
+// ----------------------------------------------------------------------
+// ★ 大改革の要：商品の1行分だけを独立して描画・管理する専用Widget
+// ----------------------------------------------------------------------
+class OrderItemRow extends StatefulWidget {
+  final OrderItem order;
+  final double? reserveAdd;
+  final List<double> quantities;
+  final Future<void> Function(int, double, bool) onUpdate;
+
+  const OrderItemRow({
+    super.key,
+    required this.order,
+    this.reserveAdd,
+    required this.quantities,
+    required this.onUpdate,
+  });
+
+  @override
+  State<OrderItemRow> createState() => _OrderItemRowState();
+}
+
+class _OrderItemRowState extends State<OrderItemRow> {
+  Timer? _debounce;
+
+  void _triggerUpdate() {
+    setState(() {}); 
+    
+    if (_debounce?.isActive ?? false) _debounce!.cancel();
+    _debounce = Timer(const Duration(milliseconds: 400), () {
+      widget.onUpdate(widget.order.item.id, widget.order.quantity, widget.order.inStock);
+      print('Updated item ${widget.order.item.name}: quantity=${widget.order.quantity}, inStock=${widget.order.inStock}');
+    });
+  }
+
+  @override
+  void dispose() {
+    _debounce?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final order = widget.order;
+
+    // 現在の数量(order.quantity)がリストに存在しない場合（例: 16）、
+    // エラーにならないよう、動的にリストへ追加して綺麗に並び替えます。
+    List<double> displayQuantities = List.from(widget.quantities);
+    if (!displayQuantities.contains(order.quantity)) {
+      displayQuantities.add(order.quantity);
+      displayQuantities.sort();
+    }
+
+    return Column(
+      children: [
+        Container(
+          color: order.inStock ? Colors.grey.withOpacity(0.1) : null,
+          padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 4.0),
+          child: Row(
+            children: [
+              Checkbox(
+                value: order.inStock,
+                activeColor: Colors.green,
+                onChanged: (bool? value) {
+                  order.inStock = value ?? false;
+                  _triggerUpdate();
+                },
+              ),
+              Expanded(
+                child: RichText(
+                  softWrap: true,
+                  text: TextSpan(
+                    children: [
+                      TextSpan(
+                        text: order.item.name,
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.bold,
+                          color: order.inStock ? Colors.grey : Colors.black,
+                        ),
+                      ),
+                      const TextSpan(text: '  '),
+                      TextSpan(
+                        style: TextStyle(
+                          color: order.inStock ? Colors.grey : Colors.black, 
+                          fontWeight: FontWeight.w500,
+                          fontSize: 12,
+                        ),
+                        children: [
+                          const TextSpan(text: '('),
+                          TextSpan(text: order.item.minimum),
+                          if (widget.reserveAdd != null) ...[
+                            const TextSpan(text: '  '),
+                            TextSpan(
+                              text: '+予約分: ${widget.reserveAdd == widget.reserveAdd!.toInt() ? widget.reserveAdd!.toInt() : widget.reserveAdd!.toDisplayString()}',
+                              style: TextStyle(
+                                color: order.inStock ? Colors.grey : Colors.orange,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ],
+                          const TextSpan(text: ')'),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(width: 4),
+              SizedBox(
+                width: 150, 
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    IconButton(
+                      iconSize: 32,
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(),
+                      icon: const Icon(Icons.remove_circle_outline),
+                      color: Colors.blueGrey,
+                      onPressed: order.quantity > 0 
+                        ? () {
+                            if (order.quantity >= 1.0) {
+                              order.quantity -= 1.0;
+                            } else {
+                              order.quantity = 0.0;
+                            }
+                            _triggerUpdate();
+                          }
+                        : null,
+                    ),
+                    DropdownButton<double>(
+                      value: order.quantity,
+                      items: displayQuantities.map((q) {
+                        return DropdownMenuItem<double>(
+                          value: q,
+                          child: Text(
+                            q.toDisplayString(), // ★ 変更：さっき作った拡張メソッドでスッキリ！
+                            style: const TextStyle(fontSize: 18), 
+                          ),
+                        );
+                      }).toList(),
+                      onChanged: (value) {
+                        if (value != null) {
+                          order.quantity = value;
+                          _triggerUpdate();
+                        }
+                      },
+                    ),
+                    IconButton(
+                      iconSize: 32,
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(),
+                      icon: const Icon(Icons.add_circle_outline),
+                      color: Theme.of(context).colorScheme.primary,
+                      onPressed: () {
+                        order.quantity += 1.0;
+                        _triggerUpdate();
+                      },
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+        const Divider(
+          height: 1, 
+          thickness: 0.5, 
+          indent: 16, 
+          endIndent: 16, 
+          color: Color.fromARGB(80, 0, 0, 0),
+        ),
+      ],
     );
   }
 }
