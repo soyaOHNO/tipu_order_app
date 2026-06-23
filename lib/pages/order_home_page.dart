@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
@@ -22,7 +23,9 @@ class OrderHomePage extends StatefulWidget {
 class _OrderHomePageState extends State<OrderHomePage> with WidgetsBindingObserver {
   late List<OrderItem> orders;
   Map<int, double> reservedItemCounts = {};
-  StreamSubscription<DocumentSnapshot>? _orderStream; // ★追加：リアルタイム同期用の監視
+  StreamSubscription<DocumentSnapshot>? _orderStream; 
+  
+  bool isKitchenView = true; // ★追加：キッチンビューか裏ビューかの判定用
 
   @override
   void initState() {
@@ -38,15 +41,11 @@ class _OrderHomePageState extends State<OrderHomePage> with WidgetsBindingObserv
   }
 
   Future<void> initializeApp() async {
-    // 1. まず日付チェックとリセット処理を確定させる
     await checkBusinessDay();
-    // 2. その後、Firestoreのリアルタイム監視を開始
     _listenToOrders();
-    // 3. トレタ連携（デモ）の計算
     await _calculateReservedItems();
   }
 
-  // ★追加：Firestoreからのリアルタイム受信
   void _listenToOrders() {
     _orderStream = FirebaseFirestore.instance.collection('working_orders').doc('current').snapshots().listen((snapshot) {
       if (snapshot.exists && snapshot.data() != null) {
@@ -59,7 +58,6 @@ class _OrderHomePageState extends State<OrderHomePage> with WidgetsBindingObserv
             final newQ = (itemData['quantity'] as num?)?.toDouble() ?? 0.0;
             final newS = itemData['inStock'] ?? false;
             
-            // 自分の端末以外から変更があった場合のみUIを更新する
             if (order.quantity != newQ || order.inStock != newS) {
               order.quantity = newQ;
               order.inStock = newS;
@@ -68,7 +66,7 @@ class _OrderHomePageState extends State<OrderHomePage> with WidgetsBindingObserv
           }
         }
         if (needsRebuild && mounted) {
-          setState(() {}); // 外部からの変更があった時だけ全体を再描画
+          setState(() {}); 
         }
       }
     });
@@ -76,7 +74,7 @@ class _OrderHomePageState extends State<OrderHomePage> with WidgetsBindingObserv
 
   @override
   void dispose() {
-    _orderStream?.cancel(); // 画面を閉じる時に監視を解除
+    _orderStream?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
@@ -88,7 +86,6 @@ class _OrderHomePageState extends State<OrderHomePage> with WidgetsBindingObserv
     }
   }
 
-  // ★修正：ハードコードを排除し specialRule で計算
   Future<void> _calculateReservedItems() async {
     final todayReservations = await fetchTodayReservations();
     final Map<int, double> rawCounts = {};
@@ -187,8 +184,11 @@ class _OrderHomePageState extends State<OrderHomePage> with WidgetsBindingObserv
     final snapshot = await docRef.get();
     
     String? lastDate;
+    Map<String, dynamic>? lastData;
+    
     if (snapshot.exists && snapshot.data() != null) {
-      lastDate = snapshot.data()!['business_date'] as String?;
+      lastData = snapshot.data()!;
+      lastDate = lastData['business_date'] as String?;
     }
 
     final businessDate = getBusinessDate();
@@ -200,8 +200,8 @@ class _OrderHomePageState extends State<OrderHomePage> with WidgetsBindingObserv
     if (lastDate == null) {
       await clearOrders(); 
       debugPrint('Firestore初回設定：営業日を $currentDate に設定しました');
-    } else if (lastDate != currentDate) {
-      await saveOrderLogToFirebase(lastDate); 
+    } else if (lastDate != currentDate && lastData != null) {
+      await transferToHistory(lastDate, lastData); 
       await clearOrders(); 
       debugPrint('日付更新：$lastDate のデータを確定履歴に送信し、$currentDate にリセットしました');
     }
@@ -215,17 +215,29 @@ class _OrderHomePageState extends State<OrderHomePage> with WidgetsBindingObserv
     return now;
   }
 
-  Future<void> saveOrderLogToFirebase(String targetDate) async {
-    final orderedItems = orders.where((o) => o.quantity > 0).toList();
-    if (orderedItems.isEmpty) return; 
+  Future<void> transferToHistory(String targetDate, Map<String, dynamic> rawData) async {
+    final List<Map<String, dynamic>> orderData = [];
+    
+    rawData.forEach((key, value) {
+      if (key == 'business_date') return;
+      
+      final itemId = int.tryParse(key);
+      if (itemId == null) return;
 
-    final List<Map<String, dynamic>> orderData = orderedItems.map((order) {
-      return {
-        'id': order.item.id,
-        'name': order.item.name,
-        'quantity': order.quantity,
-      };
-    }).toList();
+      final quantity = (value['quantity'] as num?)?.toDouble() ?? 0.0;
+      if (quantity > 0) {
+        final itemIndex = items.indexWhere((i) => i.id == itemId);
+        final itemName = itemIndex != -1 ? items[itemIndex].name : '不明な商品(ID:$itemId)';
+
+        orderData.add({
+          'id': itemId,
+          'name': itemName,
+          'quantity': quantity,
+        });
+      }
+    });
+
+    if (orderData.isEmpty) return; 
 
     try {
       await FirebaseFirestore.instance
@@ -234,7 +246,7 @@ class _OrderHomePageState extends State<OrderHomePage> with WidgetsBindingObserv
           .set({
             'date': targetDate,
             'timestamp': FieldValue.serverTimestamp(),
-            'total_items': orderedItems.length,
+            'total_items': orderData.length,
             'orders': orderData,
           });
       debugPrint('Firebaseに発注履歴を保存しました: $targetDate');
@@ -243,11 +255,8 @@ class _OrderHomePageState extends State<OrderHomePage> with WidgetsBindingObserv
     }
   }
 
-  // ★追加：変更があった商品１つだけをピンポイントでFirestoreに保存する（通信量激減）
   Future<void> updateSingleOrder(int itemId, double quantity, bool inStock) async {
     final docRef = FirebaseFirestore.instance.collection('working_orders').doc('current');
-    
-    // SetOptions(merge: true) を使うことで、他の商品のデータを消さずに特定の項目だけを安全に更新・追加します
     await docRef.set({
       itemId.toString(): {
         'quantity': quantity,
@@ -256,10 +265,8 @@ class _OrderHomePageState extends State<OrderHomePage> with WidgetsBindingObserv
     }, SetOptions(merge: true));
   }
 
-  // ★変更：すべてゼロにリセットして全体保存（強制リセットや日次更新時のみ呼ばれる）
   Future<void> clearOrders() async {
     final docRef = FirebaseFirestore.instance.collection('working_orders').doc('current');
-    
     final businessDate = getBusinessDate();
     final Map<String, dynamic> data = {
       'business_date': '${businessDate.year}-${businessDate.month.toString().padLeft(2, '0')}-${businessDate.day.toString().padLeft(2, '0')}',
@@ -273,18 +280,72 @@ class _OrderHomePageState extends State<OrderHomePage> with WidgetsBindingObserv
         'inStock': false,
       };
     }
-    
     await docRef.set(data);
-    setState(() {}); // 画面全体をリセット
+    setState(() {});
   }
 
   @override
   Widget build(BuildContext context) {
-    final categories = items.map((item) => item.category).toSet().toList();
-    if (categories.contains('裏')) {
-      categories.remove('裏');
-      categories.add('裏');
+    // ★新ロジック：選択されたビューに応じて、動的に表示用カテゴリ一覧を組み立てる
+    List<String> displayCategories = [];
+    
+    if (isKitchenView) {
+      displayCategories = orders
+          .where((o) => o.item.kitchen_category.isNotEmpty)
+          .map((o) => o.item.kitchen_category)
+          .toSet()
+          .toList();
+    } else {
+      displayCategories = orders
+          .where((o) => o.item.back_category.isNotEmpty)
+          .map((o) => o.item.back_category)
+          .toSet()
+          .toList();
     }
+
+    final List<String> kitchenCategoryOrder = [
+      '冷蔵庫（左上）',
+      '冷蔵庫（左下）',
+      '冷蔵庫（右下）',
+      '冷凍庫（右上）',
+      '引き出し冷蔵庫',
+      '調味料棚',
+      'その他',
+      'サイドテーブル下',
+      'コンロ下'
+    ];
+
+    // 【設定】裏側の理想の並び順（上から順に表示されます）
+    final List<String> backCategoryOrder = [
+      '冷蔵庫（左上段）',
+      '冷蔵庫（左中段）',
+      '冷蔵庫（左下段）',
+      '冷蔵庫（右上段）',
+      '冷蔵庫（右中段）',
+      '冷蔵庫（右下段）',
+      '冷凍庫',
+      '棚（上段）',
+      '棚（中段）',
+      '棚（下段）',
+      '棚の下',
+      '外'
+    ];
+
+    // 上記の設定リストに基づいて displayCategories を並び替え（ソート）する
+    displayCategories.sort((a, b) {
+      final orderList = isKitchenView ? kitchenCategoryOrder : backCategoryOrder;
+      
+      int indexA = orderList.indexOf(a);
+      int indexB = orderList.indexOf(b);
+      
+      // リストに定義されていない「新しいカテゴリ」が追加された場合は一番下(999)に回す
+      if (indexA == -1) indexA = 999;
+      if (indexB == -1) indexB = 999;
+      
+      return indexA.compareTo(indexB);
+    });
+
+    // ドロップダウンの指定値（5刻みスキップ）
     final quantities = [
       0.0, 0.5, 5.0, 10.0, 15.0, 20.0, 25.0, 30.0
     ];
@@ -319,49 +380,112 @@ class _OrderHomePageState extends State<OrderHomePage> with WidgetsBindingObserv
           ),
         ],
       ),
-      // ★ 描画の最適化により、外側のリストが再描画されることはほぼ無くなります
-      body: ListView.builder(
-        itemCount: categories.length,
-        itemBuilder: (context, catIndex) {
-          final category = categories[catIndex];
-          final categoryItems = orders.where((order) => order.item.category == category).toList();
+      body: Column(
+        children: [
+          // 上部の切り替え用ボタン
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+            child: Row(
+              children: [
+                Expanded(
+                  child: ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: isKitchenView ? Colors.orange : Colors.grey.shade200,
+                      foregroundColor: isKitchenView ? Colors.white : Colors.black87,
+                      elevation: isKitchenView ? 2 : 0,
+                      shape: const RoundedRectangleBorder(
+                        borderRadius: BorderRadius.horizontal(left: Radius.circular(8)),
+                      ),
+                    ),
+                    onPressed: () {
+                      setState(() {
+                        isKitchenView = true; 
+                      });
+                    },
+                    child: const Padding(
+                      padding: EdgeInsets.symmetric(vertical: 12.0),
+                      child: Text('キッチン側', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                    ),
+                  ),
+                ),
+                Expanded(
+                  child: ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: !isKitchenView ? Colors.indigo : Colors.grey.shade200,
+                      foregroundColor: !isKitchenView ? Colors.white : Colors.black87,
+                      elevation: !isKitchenView ? 2 : 0,
+                      shape: const RoundedRectangleBorder(
+                        borderRadius: BorderRadius.horizontal(right: Radius.circular(8)),
+                      ),
+                    ),
+                    onPressed: () {
+                      setState(() {
+                        isKitchenView = false; 
+                      });
+                    },
+                    child: const Padding(
+                      padding: EdgeInsets.symmetric(vertical: 12.0),
+                      child: Text('裏側', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const Divider(height: 1, thickness: 1),
+          
+          Expanded(
+            child: displayCategories.isEmpty
+                ? const Center(child: Text('表示する項目がありません', style: TextStyle(color: Colors.grey)))
+                : ListView.builder(
+                    itemCount: displayCategories.length,
+                    itemBuilder: (context, catIndex) {
+                      final category = displayCategories[catIndex];
+                      
+                      // ★新ロジック：選択されたビューのカテゴリと一致する商品を抽出
+                      final categoryItems = orders.where((order) {
+                        return isKitchenView 
+                            ? order.item.kitchen_category == category 
+                            : order.item.back_category == category;
+                      }).toList();
 
-          return Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Divider(height: 2, thickness: 1.5, indent: 0, endIndent: 0, color: Colors.black),
-              Padding(
-                padding: const EdgeInsets.all(8.0),
-                child: Text(category, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
-              ),
-              const Divider(height: 2, thickness: 1.5, indent: 0, endIndent: 0, color: Colors.black),
-              
-              // ★変更：中身の行を専用の独立したWidget（OrderItemRow）に切り出し！
-              ...categoryItems.map((order) {
-                final reserveAdd = reservedItemCounts[order.item.id];
-                return OrderItemRow(
-                  key: ValueKey(order.item.id), // 一意のキーを持たせて描画バグを防ぐ
-                  order: order,
-                  reserveAdd: reserveAdd,
-                  quantities: quantities,
-                  onUpdate: updateSingleOrder, // ピンポイント保存関数を渡す
-                );
-              }),
-            ],
-          );
-        },
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Divider(height: 2, thickness: 1.5, indent: 0, endIndent: 0, color: Colors.black),
+                          Padding(
+                            padding: const EdgeInsets.all(8.0),
+                            child: Text(category, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
+                          ),
+                          const Divider(height: 2, thickness: 1.5, indent: 0, endIndent: 0, color: Colors.black),
+                          
+                          ...categoryItems.map((order) {
+                            final reserveAdd = reservedItemCounts[order.item.id];
+                            return OrderItemRow(
+                              key: ValueKey(order.item.id), 
+                              order: order,
+                              reserveAdd: reserveAdd,
+                              quantities: quantities,
+                              isKitchenView: isKitchenView,
+                              onUpdate: updateSingleOrder, 
+                            );
+                          }),
+                        ],
+                      );
+                    },
+                  ),
+          ),
+        ],
       ),
     );
   }
 }
 
-// ----------------------------------------------------------------------
-// ★ 大改革の要：商品の1行分だけを独立して描画・管理する専用Widget
-// ----------------------------------------------------------------------
 class OrderItemRow extends StatefulWidget {
   final OrderItem order;
   final double? reserveAdd;
   final List<double> quantities;
+  final bool isKitchenView; // ★追加：キッチン側かどうかのフラグ
   final Future<void> Function(int, double, bool) onUpdate;
 
   const OrderItemRow({
@@ -369,6 +493,7 @@ class OrderItemRow extends StatefulWidget {
     required this.order,
     this.reserveAdd,
     required this.quantities,
+    required this.isKitchenView, // ★追加
     required this.onUpdate,
   });
 
@@ -385,7 +510,6 @@ class _OrderItemRowState extends State<OrderItemRow> {
     if (_debounce?.isActive ?? false) _debounce!.cancel();
     _debounce = Timer(const Duration(milliseconds: 400), () {
       widget.onUpdate(widget.order.item.id, widget.order.quantity, widget.order.inStock);
-      print('Updated item ${widget.order.item.name}: quantity=${widget.order.quantity}, inStock=${widget.order.inStock}');
     });
   }
 
@@ -399,13 +523,16 @@ class _OrderItemRowState extends State<OrderItemRow> {
   Widget build(BuildContext context) {
     final order = widget.order;
 
-    // 現在の数量(order.quantity)がリストに存在しない場合（例: 16）、
-    // エラーにならないよう、動的にリストへ追加して綺麗に並び替えます。
     List<double> displayQuantities = List.from(widget.quantities);
     if (!displayQuantities.contains(order.quantity)) {
       displayQuantities.add(order.quantity);
       displayQuantities.sort();
     }
+
+    // ★追加：見ている画面に応じて、表示する最低数を切り替える
+    String displayMinimum = widget.isKitchenView 
+        ? order.item.kitchen_minimum 
+        : order.item.back_minimum;
 
     return Column(
       children: [
@@ -444,11 +571,11 @@ class _OrderItemRowState extends State<OrderItemRow> {
                         ),
                         children: [
                           const TextSpan(text: '('),
-                          TextSpan(text: order.item.minimum),
+                          TextSpan(text: displayMinimum), // ★変更：動的に切り替わった最低数を表示
                           if (widget.reserveAdd != null) ...[
                             const TextSpan(text: '  '),
                             TextSpan(
-                              text: '+予約分: ${widget.reserveAdd == widget.reserveAdd!.toInt() ? widget.reserveAdd!.toInt() : widget.reserveAdd!.toDisplayString()}',
+                              text: '+予約分: ${widget.reserveAdd == widget.reserveAdd!.toInt() ? widget.reserveAdd!.toInt() : widget.reserveAdd}',
                               style: TextStyle(
                                 color: order.inStock ? Colors.grey : Colors.orange,
                                 fontWeight: FontWeight.w600,
@@ -491,7 +618,7 @@ class _OrderItemRowState extends State<OrderItemRow> {
                         return DropdownMenuItem<double>(
                           value: q,
                           child: Text(
-                            q.toDisplayString(), // ★ 変更：さっき作った拡張メソッドでスッキリ！
+                            q.toDisplayString(), 
                             style: const TextStyle(fontSize: 18), 
                           ),
                         );

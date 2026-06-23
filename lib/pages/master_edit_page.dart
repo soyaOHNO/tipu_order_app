@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-// ★ dart:io と path_provider のインポートを削除しました
 
 import '../data/item_data.dart';
 import '../models/item.dart';
@@ -18,8 +17,12 @@ class _MasterEditPageState extends State<MasterEditPage> {
     final isNew = existingItem == null;
     
     final nameController = TextEditingController(text: existingItem?.name ?? '');
-    final minController = TextEditingController(text: existingItem?.minimum ?? '');
-    final catController = TextEditingController(text: existingItem?.category ?? '');
+    // ★変更：最低数を2つに分割
+    final kitchenMinController = TextEditingController(text: existingItem?.kitchen_minimum ?? '');
+    final backMinController = TextEditingController(text: existingItem?.back_minimum ?? '');
+    
+    final kitchenCatController = TextEditingController(text: existingItem?.kitchen_category ?? '');
+    final backCatController = TextEditingController(text: existingItem?.back_category ?? '');
     final supController = TextEditingController(text: existingItem?.supplier ?? '');
     OrderType selectedType = existingItem?.orderType ?? OrderType.chief;
 
@@ -30,10 +33,16 @@ class _MasterEditPageState extends State<MasterEditPage> {
           builder: (context, setStateDialog) {
             final deadItems = items.where((e) => !e.alive).toList();
 
-            // ★ 追加：現在登録されている有効な商品から、カテゴリの一覧を重複なく抽出
-            final existingCategories = items
+            final existingKitchenCategories = items
                 .where((e) => e.alive)
-                .map((e) => e.category.trim())
+                .map((e) => e.kitchen_category.trim())
+                .toSet()
+                .where((c) => c.isNotEmpty)
+                .toList();
+
+            final existingBackCategories = items
+                .where((e) => e.alive)
+                .map((e) => e.back_category.trim())
                 .toSet()
                 .where((c) => c.isNotEmpty)
                 .toList();
@@ -57,8 +66,10 @@ class _MasterEditPageState extends State<MasterEditPage> {
                           if (val != null) {
                             setStateDialog(() {
                               nameController.text = val.name;
-                              minController.text = val.minimum;
-                              catController.text = val.category;
+                              kitchenMinController.text = val.kitchen_minimum; // ★変更
+                              backMinController.text = val.back_minimum;       // ★変更
+                              kitchenCatController.text = val.kitchen_category;
+                              backCatController.text = val.back_category;
                               supController.text = val.supplier;
                               selectedType = val.orderType;
                             });
@@ -73,65 +84,99 @@ class _MasterEditPageState extends State<MasterEditPage> {
                       controller: nameController,
                       decoration: const InputDecoration(labelText: '商品名 (例: チャンジャ)'),
                     ),
-                    TextField(
-                      controller: minController,
-                      decoration: const InputDecoration(labelText: '最低数 (例: 2パック)'),
-                    ),
                     
-                    // --- カテゴリ入力・選択エリア ---
-                    TextField(
-                      controller: catController,
-                      decoration: const InputDecoration(labelText: 'カテゴリ (例: 冷蔵庫(左上))'),
-                      onChanged: (text) {
-                        // 手動入力された文字に合わせてチップの選択表示をリアルタイムに切り替える
-                        setStateDialog(() {});
-                      },
-                    ),
-                    const SizedBox(height: 8),
-                    if (existingCategories.isNotEmpty) ...[
-                      const Align(
-                        alignment: Alignment.centerLeft,
-                        child: Text(
-                          '登録済みのカテゴリから選択:',
-                          style: TextStyle(fontSize: 12, color: Colors.grey, fontWeight: FontWeight.bold),
-                        ),
-                      ),
-                      const SizedBox(height: 6),
-                      Align(
-                        alignment: Alignment.centerLeft,
-                        child: Wrap(
-                          spacing: 8.0,
-                          runSpacing: 6.0,
-                          children: existingCategories.map((category) {
-                            final isSelected = catController.text.trim() == category;
-                            return ChoiceChip(
-                              label: Text(
-                                category, 
-                                style: TextStyle(
-                                  fontSize: 12, 
-                                  color: isSelected ? Colors.white : Colors.black87,
-                                  fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-                                ),
+                    const SizedBox(height: 16),
+                    // --- キッチン側設定エリア ---
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(color: Colors.orange.shade50, borderRadius: BorderRadius.circular(8)),
+                      child: Column(
+                        children: [
+                          const Text('🍳 キッチン側の設定', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.deepOrange)),
+                          const SizedBox(height: 8),
+                          TextField(
+                            controller: kitchenCatController,
+                            decoration: const InputDecoration(labelText: 'カテゴリ (例: 冷蔵庫(左上))', border: OutlineInputBorder(), filled: true, fillColor: Colors.white),
+                            onChanged: (text) => setStateDialog(() {}),
+                          ),
+                          const SizedBox(height: 6),
+                          if (existingKitchenCategories.isNotEmpty) ...[
+                            Align(
+                              alignment: Alignment.centerLeft,
+                              child: Wrap(
+                                spacing: 6.0,
+                                runSpacing: 4.0,
+                                children: existingKitchenCategories.map((category) {
+                                  final isSelected = kitchenCatController.text.trim() == category;
+                                  return ChoiceChip(
+                                    label: Text(category, style: TextStyle(fontSize: 11, color: isSelected ? Colors.white : Colors.black87)),
+                                    selected: isSelected,
+                                    selectedColor: Colors.orange,
+                                    onSelected: (bool selected) {
+                                      setStateDialog(() {
+                                        kitchenCatController.text = selected ? category : '';
+                                      });
+                                    },
+                                  );
+                                }).toList(),
                               ),
-                              selected: isSelected,
-                              selectedColor: Theme.of(context).colorScheme.primary,
-                              backgroundColor: Colors.grey.shade200,
-                              onSelected: (bool selected) {
-                                setStateDialog(() {
-                                  if (selected) {
-                                    catController.text = category;
-                                  } else {
-                                    catController.text = '';
-                                  }
-                                });
-                              },
-                            );
-                          }).toList(),
-                        ),
+                            ),
+                          ],
+                          const SizedBox(height: 8),
+                          TextField(
+                            controller: kitchenMinController,
+                            decoration: const InputDecoration(labelText: '最低数 (例: 2パック)', border: OutlineInputBorder(), filled: true, fillColor: Colors.white),
+                          ),
+                        ],
                       ),
-                      const SizedBox(height: 12),
-                    ],
-                    // ---------------------------------
+                    ),
+
+                    const SizedBox(height: 16),
+                    // --- 裏側設定エリア ---
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(color: Colors.indigo.shade50, borderRadius: BorderRadius.circular(8)),
+                      child: Column(
+                        children: [
+                          const Text('📦 裏側の設定', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.indigo)),
+                          const SizedBox(height: 8),
+                          TextField(
+                            controller: backCatController,
+                            decoration: const InputDecoration(labelText: 'カテゴリ (例: 裏棚A)', border: OutlineInputBorder(), filled: true, fillColor: Colors.white),
+                            onChanged: (text) => setStateDialog(() {}),
+                          ),
+                          const SizedBox(height: 6),
+                          if (existingBackCategories.isNotEmpty) ...[
+                            Align(
+                              alignment: Alignment.centerLeft,
+                              child: Wrap(
+                                spacing: 6.0,
+                                runSpacing: 4.0,
+                                children: existingBackCategories.map((category) {
+                                  final isSelected = backCatController.text.trim() == category;
+                                  return ChoiceChip(
+                                    label: Text(category, style: TextStyle(fontSize: 11, color: isSelected ? Colors.white : Colors.black87)),
+                                    selected: isSelected,
+                                    selectedColor: Colors.indigo,
+                                    onSelected: (bool selected) {
+                                      setStateDialog(() {
+                                        backCatController.text = selected ? category : '';
+                                      });
+                                    },
+                                  );
+                                }).toList(),
+                              ),
+                            ),
+                          ],
+                          const SizedBox(height: 8),
+                          TextField(
+                            controller: backMinController,
+                            decoration: const InputDecoration(labelText: '最低数 (例: 1箱)', border: OutlineInputBorder(), filled: true, fillColor: Colors.white),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 16),
 
                     DropdownButtonFormField<OrderType>(
                       value: selectedType,
@@ -149,9 +194,10 @@ class _MasterEditPageState extends State<MasterEditPage> {
                         if (val != null) setStateDialog(() => selectedType = val);
                       },
                     ),
+                    const SizedBox(height: 16),
                     TextField(
                       controller: supController,
-                      decoration: const InputDecoration(labelText: '仕入先 (任意)'),
+                      decoration: const InputDecoration(labelText: '仕入先 (任意)', border: OutlineInputBorder()),
                     ),
                   ],
                 ),
@@ -178,8 +224,10 @@ class _MasterEditPageState extends State<MasterEditPage> {
                           items[index] = Item(
                             id: existingItem.id,
                             name: existingItem.name,
-                            minimum: existingItem.minimum,
-                            category: existingItem.category,
+                            kitchen_minimum: existingItem.kitchen_minimum,
+                            back_minimum: existingItem.back_minimum,
+                            kitchen_category: existingItem.kitchen_category,
+                            back_category: existingItem.back_category,
                             supplier: existingItem.supplier,
                             orderType: existingItem.orderType,
                             alive: false,
@@ -201,6 +249,11 @@ class _MasterEditPageState extends State<MasterEditPage> {
                     final inputName = nameController.text.trim();
                     if (inputName.isEmpty) return; 
 
+                    final kCat = kitchenCatController.text.trim();
+                    final bCat = backCatController.text.trim();
+                    final kMin = kitchenMinController.text.trim(); // ★変更
+                    final bMin = backMinController.text.trim();    // ★変更
+
                     if (isNew) {
                       int deadIndex = items.indexWhere((e) => !e.alive && e.name == inputName);
 
@@ -208,8 +261,10 @@ class _MasterEditPageState extends State<MasterEditPage> {
                         items[deadIndex] = Item(
                           id: items[deadIndex].id,
                           name: inputName,
-                          minimum: minController.text.trim(),
-                          category: catController.text.trim(),
+                          kitchen_minimum: kMin, // ★変更
+                          back_minimum: bMin,    // ★変更
+                          kitchen_category: kCat,
+                          back_category: bCat,
                           supplier: supController.text.trim(),
                           orderType: selectedType,
                           alive: true,
@@ -219,8 +274,10 @@ class _MasterEditPageState extends State<MasterEditPage> {
                         items.add(Item(
                           id: newId,
                           name: inputName,
-                          minimum: minController.text.trim(),
-                          category: catController.text.trim(),
+                          kitchen_minimum: kMin, // ★変更
+                          back_minimum: bMin,    // ★変更
+                          kitchen_category: kCat,
+                          back_category: bCat,
                           supplier: supController.text.trim(),
                           orderType: selectedType,
                           alive: true,
@@ -232,8 +289,10 @@ class _MasterEditPageState extends State<MasterEditPage> {
                         items[index] = Item(
                           id: existingItem.id, 
                           name: inputName,
-                          minimum: minController.text.trim(),
-                          category: catController.text.trim(),
+                          kitchen_minimum: kMin, // ★変更
+                          back_minimum: bMin,    // ★変更
+                          kitchen_category: kCat,
+                          back_category: bCat,
                           supplier: supController.text.trim(),
                           orderType: selectedType,
                           alive: true,
@@ -267,11 +326,27 @@ class _MasterEditPageState extends State<MasterEditPage> {
         itemCount: activeItems.length,
         itemBuilder: (context, index) {
           final item = activeItems[index];
+          String catDisplay = '';
+          // ★変更：一覧表示での見栄えを調整
+          String minDisplay = '';
+          
+          if (item.kitchen_category.isNotEmpty && item.back_category.isNotEmpty) {
+            catDisplay = '🫕:${item.kitchen_category} / 📦:${item.back_category}';
+            minDisplay = '🫕:${item.kitchen_minimum} / 📦:${item.back_minimum}';
+          } else if (item.kitchen_category.isNotEmpty) {
+            catDisplay = '🫕:${item.kitchen_category}';
+            minDisplay = '🫕:${item.kitchen_minimum}';
+          } else {
+            catDisplay = '📦:${item.back_category}';
+            minDisplay = '📦:${item.back_minimum}';
+          }
+
           return Card(
             margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
             child: ListTile(
               title: Text(item.name, style: const TextStyle(fontWeight: FontWeight.bold)),
-              subtitle: Text('${item.category} / 最低: ${item.minimum} / ${item.orderType.name}'),
+              subtitle: Text('$catDisplay\n最低数: $minDisplay / ${item.orderType.name}'),
+              isThreeLine: true,
               trailing: const Icon(Icons.edit, color: Colors.grey),
               onTap: () => _showEditDialog(existingItem: item),
             ),

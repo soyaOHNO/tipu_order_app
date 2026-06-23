@@ -57,8 +57,10 @@
 
 
 ## Build
-* flutter build web --release
-* firebase init hosting
+```bash
+flutter build web --release
+firebase init hosting
+```
 What do you want to use as your public directory? (公開フォルダはどこにする？)
 👉 build/web と入力してエンター（※デフォルトの public のままにしないよう注意！）
 
@@ -70,8 +72,12 @@ Set up automatic builds and deploys with GitHub?
 
 File build/web/index.html already exists. Overwrite? (上書きする？)
 👉 n (No！絶対に上書きしないでください。Flutterが作った index.html が消えてしまいます)
-* firebase deploy --only hosting
+```bash
+firebase deploy --only hosting
+```
 
 ## Update
-* flutter build web --release
-* firebase deploy --only hosting
+```bash
+flutter build web --release
+firebase deploy --only hosting
+```

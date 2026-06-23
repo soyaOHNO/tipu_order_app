@@ -92,7 +92,7 @@ class _DishEditPageState extends State<DishEditPage> {
                         final req = entry.value;
                         final item = items.firstWhere(
                           (i) => i.id == itemId,
-                          orElse: () => Item(id: itemId, name: '不明な食材(ID:$itemId)', minimum: '', category: '', supplier: '', orderType: OrderType.chief, alive: false),
+                          orElse: () => Item(id: itemId, name: '不明な食材(ID:$itemId)', kitchen_minimum: '', back_minimum: '', kitchen_category: '', back_category: '', supplier: '', orderType: OrderType.chief, alive: false),
                         );
 
                         return Card(
