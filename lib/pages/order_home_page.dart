@@ -25,6 +25,7 @@ class _OrderHomePageState extends State<OrderHomePage> with WidgetsBindingObserv
   StreamSubscription<DocumentSnapshot>? _orderStream; 
   
   bool isKitchenView = true; // ★追加：キッチンビューか裏ビューかの判定用
+  bool isBannerVisible = true; // ★追加：日曜日の警告バナーの表示制御用
 
   @override
   void initState() {
@@ -213,6 +214,10 @@ class _OrderHomePageState extends State<OrderHomePage> with WidgetsBindingObserv
     }
     return now;
   }
+  bool isSundayBusinessDay() {
+    // DateTime.sunday は「7」を返します
+    return getBusinessDate().weekday == DateTime.sunday;
+  }
 
   Future<void> transferToHistory(String targetDate, Map<String, dynamic> rawData) async {
     final List<Map<String, dynamic>> orderData = [];
@@ -381,6 +386,34 @@ class _OrderHomePageState extends State<OrderHomePage> with WidgetsBindingObserv
       ),
       body: Column(
         children: [
+          if (isSundayBusinessDay() && isBannerVisible)
+            Container(
+              width: double.infinity,
+              color: Colors.red.shade50,
+              padding: const EdgeInsets.symmetric(vertical: 8.0, horizontal: 16.0),
+              child: Row(
+                children: [
+                  Icon(Icons.warning_amber_rounded, color: Colors.red, size: 24),
+                  SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      '本日は日曜日です！\n火曜日と水曜日の二日分の発注を入力してください。',
+                      style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold, fontSize: 14),
+                    ),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.close, color: Colors.red),
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(),
+                    onPressed: () {
+                      setState(() {
+                        isBannerVisible = false; // フラグをfalseにして画面を再描画
+                      });
+                    },
+                  ),
+                ],
+              ),
+            ),
           // 上部の切り替え用ボタン
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),

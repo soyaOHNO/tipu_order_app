@@ -13,6 +13,8 @@ import 'data/course_data.dart';
 import 'pages/course_edit_page.dart';
 import 'data/dish_data.dart';
 import 'pages/dish_edit_page.dart';
+import 'pages/hall_order_page.dart';
+import 'data/hall_item_data.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -26,6 +28,7 @@ void main() async {
   FirebaseFirestore.instance.settings = const Settings(persistenceEnabled: true);
   
   await loadItemMaster(); 
+  await loadHallItems();
   await loadDishes();
   await loadCourseRecipes();
   
@@ -77,6 +80,19 @@ class TopMenuPage extends StatelessWidget {
                 Navigator.push(
                   context,
                   MaterialPageRoute(builder: (_) => const OrderHomePage()),
+                );
+              },
+            ),
+
+            // 4. ホール発注（紫）
+            MenuButton(
+              title: 'ホール発注',
+              icon: Icons.assignment,
+              color: Colors.purple,
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const HallOrderHomePage()),
                 );
               },
             ),
