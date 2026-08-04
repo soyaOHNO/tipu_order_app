@@ -16,7 +16,7 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
 # In Windows, build-name is used as the major, minor, and patch parts
 # of the product and file versions while build-number is used as the build suffix.
-version: 1.0.3+4
+version: 1.0.4+5
 
 environment:
   sdk: ^3.12.2
@@ -30,7 +30,7 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
-  # 驍ｵ・ｺ髦ｮ蜻ｻ・ｼ繝ｻ・ｸ・ｺ繝ｻ・ｫ驛｢譏懶ｽｻ・｣郢晢ｽ｣驛｢・ｧ繝ｻ・ｱ驛｢譎｢・ｽ・ｼ驛｢・ｧ繝ｻ・ｸ驛｢・ｧ陞ｳ螟ｲ・ｽ・ｿ繝ｻ・ｽ髯ｷ莨夲ｽ｣・ｰ郢晢ｽｻ陋ｹ・ｻ郢晢ｽｰ驛｢譎｢・ｽ・ｼ驛｢・ｧ繝ｻ・ｸ驛｢譎｢・ｽ・ｧ驛｢譎｢・ｽ・ｳ驍ｵ・ｺ繝ｻ・ｯ鬯ｩ蛹・ｽｽ・ｩ髯橸ｽｳ隲帛沺ﾂ蜻ｵ・ｭ繝ｻ・ｽ・ｰ驛｢・ｧ陷代・・ｽ・ｽ繝ｻ・ｿ驍ｵ・ｺ繝ｻ・｣驍ｵ・ｺ繝ｻ・ｦ驍ｵ・ｺ闕ｳ蟯ｩ蜻ｳ驍ｵ・ｺ髴郁ｲｻ・ｼ讒ｭ繝ｻ郢晢ｽｻ
+  # 鬩搾ｽｵ繝ｻ・ｺ鬮ｦ・ｮ陷ｻ・ｻ繝ｻ・ｼ郢晢ｽｻ繝ｻ・ｸ繝ｻ・ｺ郢晢ｽｻ繝ｻ・ｫ鬩幢ｽ｢隴乗・・ｽ・ｻ繝ｻ・｣驛｢譎｢・ｽ・｣鬩幢ｽ｢繝ｻ・ｧ郢晢ｽｻ繝ｻ・ｱ鬩幢ｽ｢隴趣ｽ｢繝ｻ・ｽ繝ｻ・ｼ鬩幢ｽ｢繝ｻ・ｧ郢晢ｽｻ繝ｻ・ｸ鬩幢ｽ｢繝ｻ・ｧ髯橸ｽｳ陞滂ｽｲ繝ｻ・ｽ繝ｻ・ｿ郢晢ｽｻ繝ｻ・ｽ鬮ｯ・ｷ闔ｨ螟ｲ・ｽ・｣繝ｻ・ｰ驛｢譎｢・ｽ・ｻ髯具ｽｹ繝ｻ・ｻ驛｢譎｢・ｽ・ｰ鬩幢ｽ｢隴趣ｽ｢繝ｻ・ｽ繝ｻ・ｼ鬩幢ｽ｢繝ｻ・ｧ郢晢ｽｻ繝ｻ・ｸ鬩幢ｽ｢隴趣ｽ｢繝ｻ・ｽ繝ｻ・ｧ鬩幢ｽ｢隴趣ｽ｢繝ｻ・ｽ繝ｻ・ｳ鬩搾ｽｵ繝ｻ・ｺ郢晢ｽｻ繝ｻ・ｯ鬯ｯ・ｩ陋ｹ繝ｻ・ｽ・ｽ繝ｻ・ｩ鬮ｯ讖ｸ・ｽ・ｳ髫ｲ蟶帶ｲｺ・つ陷ｻ・ｵ繝ｻ・ｭ郢晢ｽｻ繝ｻ・ｽ繝ｻ・ｰ鬩幢ｽ｢繝ｻ・ｧ髯ｷ莉｣繝ｻ繝ｻ・ｽ繝ｻ・ｽ郢晢ｽｻ繝ｻ・ｿ鬩搾ｽｵ繝ｻ・ｺ郢晢ｽｻ繝ｻ・｣鬩搾ｽｵ繝ｻ・ｺ郢晢ｽｻ繝ｻ・ｦ鬩搾ｽｵ繝ｻ・ｺ髣包ｽｳ陝ｯ・ｩ陷ｻ・ｳ鬩搾ｽｵ繝ｻ・ｺ鬮ｴ驛・ｽｲ・ｻ繝ｻ・ｼ隶抵ｽｭ郢晢ｽｻ驛｢譎｢・ｽ・ｻ
   http: ^1.6.0
   flutter_dotenv: ^6.0.1
 
@@ -63,7 +63,7 @@ flutter:
   # included with your application, so that you can use the icons in
   # the material Icons class.
   uses-material-design: true
-  # assets驍ｵ・ｺ繝ｻ・ｯ驍ｵ・ｺ髦ｮ蜻ｻ・ｼ繝ｻ・ｸ・ｺ繝ｻ・ｫ髫ｴ蜴・ｽｽ・ｸ驍ｵ・ｺ鬮ｦ・ｪ遶擾ｽｪ驍ｵ・ｺ陷ｻ・ｻ繝ｻ・ｼ郢晢ｽｻependencies驍ｵ・ｺ繝ｻ・ｮ髣包ｽｳ繝ｻ・ｭ驍ｵ・ｺ繝ｻ・ｧ驍ｵ・ｺ繝ｻ・ｯ驍ｵ・ｺ繝ｻ・ｪ驍ｵ・ｺ郢晢ｽｻ繝ｻ・ｼ郢晢ｽｻ繝ｻ・ｼ郢晢ｽｻ
+  # assets鬩搾ｽｵ繝ｻ・ｺ郢晢ｽｻ繝ｻ・ｯ鬩搾ｽｵ繝ｻ・ｺ鬮ｦ・ｮ陷ｻ・ｻ繝ｻ・ｼ郢晢ｽｻ繝ｻ・ｸ繝ｻ・ｺ郢晢ｽｻ繝ｻ・ｫ鬮ｫ・ｴ陷ｴ繝ｻ・ｽ・ｽ繝ｻ・ｸ鬩搾ｽｵ繝ｻ・ｺ鬯ｮ・ｦ繝ｻ・ｪ驕ｶ謫ｾ・ｽ・ｪ鬩搾ｽｵ繝ｻ・ｺ髯ｷ・ｻ繝ｻ・ｻ郢晢ｽｻ繝ｻ・ｼ驛｢譎｢・ｽ・ｻependencies鬩搾ｽｵ繝ｻ・ｺ郢晢ｽｻ繝ｻ・ｮ鬮｣蛹・ｽｽ・ｳ郢晢ｽｻ繝ｻ・ｭ鬩搾ｽｵ繝ｻ・ｺ郢晢ｽｻ繝ｻ・ｧ鬩搾ｽｵ繝ｻ・ｺ郢晢ｽｻ繝ｻ・ｯ鬩搾ｽｵ繝ｻ・ｺ郢晢ｽｻ繝ｻ・ｪ鬩搾ｽｵ繝ｻ・ｺ驛｢譎｢・ｽ・ｻ郢晢ｽｻ繝ｻ・ｼ驛｢譎｢・ｽ・ｻ郢晢ｽｻ繝ｻ・ｼ驛｢譎｢・ｽ・ｻ
   assets:
     - .env
 
