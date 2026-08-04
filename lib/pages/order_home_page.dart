@@ -87,26 +87,27 @@ class _OrderHomePageState extends State<OrderHomePage> with WidgetsBindingObserv
   }
 
   Future<void> _calculateReservedItems() async {
-    final todayReservations = await fetchTodayReservations();
+    // 翌日の日付を取得（営業日ロジックのgetBusinessDateと合わせることも可能ですが、明日の予約なので単純に1日足します）
+    final tomorrow = DateTime.now().add(const Duration(days: 1));
+    final dateString = '${tomorrow.year}-${tomorrow.month.toString().padLeft(2, '0')}-${tomorrow.day.toString().padLeft(2, '0')}';
+    
+    final todayReservations = await fetchTodayReservations(dateString);
     final Map<int, double> rawCounts = {};
 
     for (final res in todayReservations) {
-      if (res.memo.isEmpty) continue;
+      // ★ コースがnull（席のみ予約）の場合は計算をスキップ
+      if (res.course == null) continue;
 
-      int courseIdx = -1;
-      for (int i = 0; i < courseRecipes.length; i++) {
-        if (courseRecipes[i].alive && res.memo.contains(courseRecipes[i].toretaKeyword)) {
-          courseIdx = i;
-          break; 
-        }
-      }
+      // ★ Python APIが正規化してくれたコース名と、マスタのコース名を「完全一致」で探す
+      final courseIdx = courseRecipes.indexWhere((c) => c.alive && c.courseName == res.course);
       
       if (courseIdx == -1) continue; 
       final course = courseRecipes[courseIdx];
 
-      int tCount = res.tableCount > 0 ? res.tableCount : 1; 
-      int basePeople = res.peopleCount ~/ tCount;
-      int remainder = res.peopleCount % tCount;
+      // APIからのデータは基本的に1予約=1テーブルとして処理
+      int tCount = 1; 
+      int basePeople = res.people ~/ tCount;
+      int remainder = res.people % tCount;
 
       List<int> tables = List.generate(tCount, (index) => basePeople);
       for (int i = 0; i < remainder; i++) {

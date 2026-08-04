@@ -1,17 +1,29 @@
 class Reservation {
-  final String id;
-  final String customerName; // お客様名
-  final DateTime time;       // 予約時間
-  final int peopleCount;     // 人数
-  final int tableCount;      // 実際のテーブル数
-  final String memo;         // 備考（コース名やアレルギーなど）
+  final String startTime;
+  final String endTime;
+  final String tableId;
+  final int people;
+  final String? course;
+  final String? note;
 
   Reservation({
-    required this.id,
-    required this.customerName,
-    required this.time,
-    required this.peopleCount,
-    required this.tableCount,
-    this.memo = '',
+    required this.startTime,
+    required this.endTime,
+    required this.tableId,
+    required this.people,
+    this.course,
+    this.note,
   });
+
+  // APIから受け取ったJSONデータをDartのオブジェクトに変換
+  factory Reservation.fromJson(Map<String, dynamic> json) {
+    return Reservation(
+      startTime: json['start_time'] as String? ?? '',
+      endTime: json['end_time'] as String? ?? '',
+      tableId: json['table_id'] as String? ?? '',
+      people: json['people'] as int? ?? 0,
+      course: json['course'] as String?, // 席のみ・不明の場合はnullが入る
+      note: json['note'] as String?,
+    );
+  }
 }

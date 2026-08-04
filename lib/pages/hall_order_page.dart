@@ -1,10 +1,36 @@
 import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/hall_item.dart';
 import '../data/hall_item_data.dart';
 import 'hall_confirm_page.dart';
+import '../data/hall_order_data.dart';
+import 'hall_previous_order_page.dart';
 
-class HallOrderHomePage extends StatelessWidget {
+// ==========================================
+// ホールスタッフ向け：発注メイン画面 (3タブ構成)
+// ==========================================
+class HallOrderHomePage extends StatefulWidget {
   const HallOrderHomePage({super.key});
+
+  @override
+  State<HallOrderHomePage> createState() => _HallOrderHomePageState();
+}
+
+class _HallOrderHomePageState extends State<HallOrderHomePage> {
+  late Stream<DocumentSnapshot> _stream;
+
+  @override
+  void initState() {
+    super.initState();
+    // 非同期処理を待たずに、まずStreamを初期化してエラーを防ぐ
+    _stream = streamWorkingHallOrders();
+    _initializeAndListen();
+  }
+
+  Future<void> _initializeAndListen() async {
+    // 画面を開いた時に「朝6時を跨いでいるか」をチェックして履歴化
+    await checkAndTransferHallHistory();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -14,6 +40,18 @@ class HallOrderHomePage extends StatelessWidget {
         appBar: AppBar(
           title: const Text('ホール発注'),
           actions: [
+            IconButton(
+              icon: const Icon(Icons.history),
+              tooltip: '発注履歴',
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => const HallPreviousOrderPage(),
+                  ),
+                );
+              },
+            ),
             IconButton(
               icon: const Icon(Icons.fact_check_outlined),
               tooltip: '発注確認リスト',
@@ -38,12 +76,36 @@ class HallOrderHomePage extends StatelessWidget {
             ],
           ),
         ),
-        body: const TabBarView(
-          children: [
-            InventoryInputTab(),
-            OrderManagementTab(),
-            ReplenishmentTab(),
-          ],
+        body: StreamBuilder<DocumentSnapshot>(
+          stream: _stream,
+          builder: (context, snapshot) {
+            // Firebaseからデータを受信したら、ローカルの `hallItems` に反映させる
+            if (snapshot.hasData && snapshot.data!.exists) {
+              final data = snapshot.data!.data() as Map<String, dynamic>?;
+              if (data != null && data['items'] != null) {
+                final itemsData = data['items'] as Map<String, dynamic>;
+                for (final item in hallItems) {
+                  final itemState = itemsData[item.id.toString()];
+                  if (itemState != null) {
+                    item.opened = itemState['opened'] ?? item.opened;
+                    item.unopened = itemState['unopened'] ?? item.unopened;
+                    item.stock = itemState['stock'] ?? item.stock;
+                    item.isChecked = itemState['is_checked'] ?? item.isChecked;
+                    item.manualAdjustment = itemState['manual_adjustment'] ?? item.manualAdjustment;
+                    item.userMemo = itemState['user_memo'] ?? item.userMemo;
+                  }
+                }
+              }
+            }
+
+            return const TabBarView(
+              children: [
+                InventoryInputTab(),
+                OrderManagementTab(),
+                ReplenishmentTab(),
+              ],
+            );
+          },
         ),
       ),
     );
@@ -69,7 +131,14 @@ class _InventoryInputTabState extends State<InventoryInputTab> {
       itemCount: categories.length,
       itemBuilder: (context, index) {
         final category = categories[index];
-        final itemsInCategory = mockDrinkItems.where((e) => e.category == category).toList();
+        // ワイン（name == 'ワイン'）は在庫入力画面から除外する
+        final itemsInCategory = mockDrinkItems
+            .where((e) => e.category == category && e.name != 'ワイン')
+            .toList();
+
+        if (itemsInCategory.isEmpty) {
+          return const SizedBox.shrink();
+        }
 
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -95,19 +164,17 @@ class _InventoryInputTabState extends State<InventoryInputTab> {
                       child: Text(item.name, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
                     ),
                     Expanded(
-                      flex: 3,
+                      flex: 4,
                       child: Row(
                         mainAxisAlignment: MainAxisAlignment.end,
                         children: isStockOnly
                             ? [
-                                // 冷蔵庫③等の重複ストックアイテムは「ストック」のみを表示
-                                _buildCounter('ストック (目標:${item.targetStock})', item.stock, (val) => setState(() => item.stock = val)),
+                                _buildCounter('ストック (目標:${item.targetStock})', item.stock, item, context, (val) => setState(() => item.stock = val)),
                               ]
                             : [
-                                // メインアイテムは開栓・未開栓を表示
-                                _buildCounter('開 (目標:${item.targetOpened})', item.opened, (val) => setState(() => item.opened = val)),
+                                _buildCounter('開 (目標:${item.targetOpened})', item.opened, item, context, (val) => setState(() => item.opened = val)),
                                 const SizedBox(width: 8),
-                                _buildCounter('未 (目標:${item.targetUnopened})', item.unopened, (val) => setState(() => item.unopened = val)),
+                                _buildCounter('未 (目標:${item.targetUnopened})', item.unopened, item, context, (val) => setState(() => item.unopened = val)),
                               ],
                       ),
                     ),
@@ -121,27 +188,62 @@ class _InventoryInputTabState extends State<InventoryInputTab> {
     );
   }
 
-  Widget _buildCounter(String label, int value, Function(int) onChanged) {
+  Widget _buildCounter(String label, int value, HallItem item, BuildContext context, Function(int) onChanged) {
+    final screenWidth = MediaQuery.of(context).size.width;
+    // 4つのボタンを並べるためサイズを少し小さめに調整
+    final double buttonSize = screenWidth * 0.055; 
+    final double valueTextSize = screenWidth * 0.045; 
+    final double labelTextSize = screenWidth * 0.025;
+
     return Column(
       children: [
-        Text(label, style: const TextStyle(fontSize: 11, color: Colors.grey)),
+        Text(label, style: TextStyle(fontSize: labelTextSize, color: Colors.grey)),
         Row(
+          mainAxisSize: MainAxisSize.min,
           children: [
+            // -5 ボタン
             IconButton(
-              icon: const Icon(Icons.remove_circle_outline, color: Colors.redAccent),
+              icon: Icon(Icons.keyboard_double_arrow_left, color: Colors.redAccent, size: buttonSize),
               constraints: const BoxConstraints(),
               padding: EdgeInsets.zero,
-              onPressed: value > 0 ? () => onChanged(value - 1) : null,
+              onPressed: value > 0 ? () {
+                onChanged(value >= 5 ? value - 5 : 0);
+                updateSingleHallItem(item);
+              } : null,
+            ),
+            // -1 ボタン
+            IconButton(
+              icon: Icon(Icons.remove_circle_outline, color: Colors.redAccent, size: buttonSize),
+              constraints: const BoxConstraints(),
+              padding: EdgeInsets.zero,
+              onPressed: value > 0 ? () {
+                onChanged(value - 1);
+                updateSingleHallItem(item);
+              } : null,
             ),
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 6),
-              child: Text('$value', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+              padding: EdgeInsets.symmetric(horizontal: screenWidth * 0.01),
+              child: Text('$value', style: TextStyle(fontSize: valueTextSize, fontWeight: FontWeight.bold)),
             ),
+            // +1 ボタン
             IconButton(
-              icon: const Icon(Icons.add_circle_outline, color: Colors.blueAccent),
+              icon: Icon(Icons.add_circle_outline, color: Colors.blueAccent, size: buttonSize),
               constraints: const BoxConstraints(),
               padding: EdgeInsets.zero,
-              onPressed: () => onChanged(value + 1),
+              onPressed: () {
+                onChanged(value + 1);
+                updateSingleHallItem(item);
+              },
+            ),
+            // +5 ボタン
+            IconButton(
+              icon: Icon(Icons.keyboard_double_arrow_right, color: Colors.blueAccent, size: buttonSize),
+              constraints: const BoxConstraints(),
+              padding: EdgeInsets.zero,
+              onPressed: () {
+                onChanged(value + 5);
+                updateSingleHallItem(item);
+              },
             ),
           ],
         ),
@@ -163,7 +265,6 @@ class OrderManagementTab extends StatefulWidget {
 class _OrderManagementTabState extends State<OrderManagementTab> {
   @override
   Widget build(BuildContext context) {
-    // ★ sameId != null の重複品（冷蔵庫③側）を除外したメインリスト
     final mainDrinkItems = mockDrinkItems.where((e) => e.sameId == null).toList();
     final categories = mainDrinkItems.map((e) => e.category).toSet().toList();
 
@@ -172,6 +273,10 @@ class _OrderManagementTabState extends State<OrderManagementTab> {
       itemBuilder: (context, index) {
         final category = categories[index];
         final itemsInCategory = mainDrinkItems.where((e) => e.category == category).toList();
+
+        if (itemsInCategory.isEmpty) {
+          return const SizedBox.shrink();
+        }
 
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -186,12 +291,94 @@ class _OrderManagementTabState extends State<OrderManagementTab> {
               ),
             ),
             ...itemsInCategory.map((item) {
-              // ★ sameId連携も含めた「合算発注数」を計算
+              // ワイン専用UI（メモ入力のみ）
+              if (item.name == 'ワイン') {
+                final bool isZeroOrder = item.userMemo.isEmpty;
+                return Opacity(
+                  opacity: isZeroOrder ? 0.4 : 1.0, // メモがなければ薄くする
+                  child: Column(
+                    children: [
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.center,
+                          children: [
+                            Expanded(
+                              flex: 3,
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(item.name, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                                  if (item.memo.isNotEmpty) ...[
+                                    const SizedBox(height: 4),
+                                    Text('⚠️ ${item.memo}', style: const TextStyle(fontSize: 12, color: Colors.redAccent, fontWeight: FontWeight.bold)),
+                                  ],
+                                ],
+                              ),
+                            ),
+                            Expanded(
+                              flex: 2,
+                              child: Align(
+                                alignment: Alignment.centerRight,
+                                child: InkWell(
+                                  onTap: () async {
+                                    String? newMemo = await showDialog<String>(
+                                      context: context,
+                                      builder: (context) {
+                                        String tempMemo = item.userMemo;
+                                        return AlertDialog(
+                                          title: const Text('ワインの発注メモ'),
+                                          content: TextField(
+                                            autofocus: true,
+                                            decoration: const InputDecoration(hintText: '例: 赤ワイン2本、白1本'),
+                                            onChanged: (val) => tempMemo = val,
+                                            controller: TextEditingController(text: item.userMemo),
+                                          ),
+                                          actions: [
+                                            TextButton(onPressed: () => Navigator.pop(context), child: const Text('キャンセル')),
+                                            TextButton(
+                                              onPressed: () => Navigator.pop(context, tempMemo),
+                                              child: const Text('保存', style: TextStyle(fontWeight: FontWeight.bold)),
+                                            ),
+                                          ],
+                                        );
+                                      },
+                                    );
+                                    if (newMemo != null) {
+                                      setState(() => item.userMemo = newMemo);
+                                      updateSingleHallItem(item);
+                                    }
+                                  },
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                    decoration: BoxDecoration(
+                                      color: Colors.blue.shade50,
+                                      borderRadius: BorderRadius.circular(8),
+                                      border: Border.all(color: Colors.blue.shade200),
+                                    ),
+                                    child: Text(
+                                      item.userMemo.isEmpty ? '✏️ メモを追加' : '✏️ ${item.userMemo}',
+                                      style: const TextStyle(fontSize: 14, color: Colors.blue, fontWeight: FontWeight.bold),
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const Divider(height: 1, thickness: 0.5, indent: 16, endIndent: 16),
+                    ],
+                  ),
+                );
+              }
+
+              // --- 通常のドリンクアイテム ---
               int autoAmount = item.calculateTotalOrderAmount(mockDrinkItems);
               int finalOrderAmount = autoAmount + item.manualAdjustment;
               if (finalOrderAmount < 0) finalOrderAmount = 0;
 
-              // ペアになっている冷蔵庫③等のストック数を探す
               HallItem? pairedItem;
               try {
                 pairedItem = mockDrinkItems.firstWhere((p) => p.sameId == item.id);
@@ -199,77 +386,111 @@ class _OrderManagementTabState extends State<OrderManagementTab> {
                 pairedItem = null;
               }
 
-              return Column(
-                children: [
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.center,
-                      children: [
-                        Expanded(
-                          flex: 3,
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(item.name, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-                              if (item.memo.isNotEmpty) ...[
+              // 発注数が0の場合は薄く表示する判定
+              final bool isZeroOrder = finalOrderAmount == 0;
+
+              return Opacity(
+                opacity: isZeroOrder ? 0.4 : 1.0, // 0なら半透明(0.4)にする
+                child: Column(
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.center,
+                        children: [
+                          Expanded(
+                            flex: 5,
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(item.name, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                                if (item.memo.isNotEmpty) ...[
+                                  const SizedBox(height: 4),
+                                  Text('⚠️ ${item.memo}', style: const TextStyle(fontSize: 12, color: Colors.redAccent, fontWeight: FontWeight.bold)),
+                                ],
                                 const SizedBox(height: 4),
-                                Text('⚠️ ${item.memo}', style: const TextStyle(fontSize: 12, color: Colors.redAccent, fontWeight: FontWeight.bold)),
+                                Text(
+                                  '【開】${item.opened}/${item.targetOpened} 【未】${item.unopened}/${item.targetUnopened}'
+                                  '${pairedItem != null ? " 【庫③】${pairedItem.stock}/${pairedItem.targetStock}" : ""}',
+                                  style: const TextStyle(fontSize: 12, color: Colors.black87),
+                                ),
                               ],
-                              const SizedBox(height: 4),
-                              // ★ 内訳と全体の状況を表示
-                              Text(
-                                '【開】${item.opened}/${item.targetOpened} 【未】${item.unopened}/${item.targetUnopened}'
-                                '${pairedItem != null ? " 【庫③】${pairedItem.stock}/${pairedItem.targetStock}" : ""}',
-                                style: const TextStyle(fontSize: 12, color: Colors.black87),
-                              ),
-                            ],
+                            ),
                           ),
-                        ),
-                        Expanded(
-                          flex: 2,
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.end,
-                            children: [
-                              IconButton(
-                                icon: const Icon(Icons.remove_circle_outline, color: Colors.blueGrey),
-                                padding: EdgeInsets.zero,
-                                constraints: const BoxConstraints(),
-                                onPressed: finalOrderAmount > 0 ? () {
-                                  setState(() {
-                                    item.manualAdjustment--;
-                                  });
-                                } : null,
-                              ),
-                              Padding(
-                                padding: const EdgeInsets.symmetric(horizontal: 12),
-                                child: Text(
-                                  '$finalOrderAmount',
-                                  style: TextStyle(
-                                    fontSize: 22, 
-                                    fontWeight: FontWeight.bold,
-                                    color: finalOrderAmount > 0 ? Colors.blueAccent : Colors.grey.shade400,
+                          Expanded(
+                            flex: 7, // ボタンが多いため、右側の幅を少し広めに確保
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.end,
+                              children: [
+                                // -5 ボタン
+                                IconButton(
+                                  icon: const Icon(Icons.keyboard_double_arrow_left, color: Colors.blueGrey),
+                                  padding: EdgeInsets.zero,
+                                  constraints: const BoxConstraints(),
+                                  onPressed: finalOrderAmount > 0 ? () {
+                                    setState(() {
+                                      int decrease = finalOrderAmount >= 5 ? 5 : finalOrderAmount;
+                                      item.manualAdjustment -= decrease;
+                                    });
+                                    updateSingleHallItem(item);
+                                  } : null,
+                                ),
+                                // -1 ボタン
+                                IconButton(
+                                  icon: const Icon(Icons.remove_circle_outline, color: Colors.blueGrey),
+                                  padding: EdgeInsets.zero,
+                                  constraints: const BoxConstraints(),
+                                  onPressed: finalOrderAmount > 0 ? () {
+                                    setState(() {
+                                      item.manualAdjustment--;
+                                    });
+                                    updateSingleHallItem(item);
+                                  } : null,
+                                ),
+                                Padding(
+                                  padding: const EdgeInsets.symmetric(horizontal: 4),
+                                  child: Text(
+                                    '$finalOrderAmount',
+                                    style: TextStyle(
+                                      fontSize: 22, 
+                                      fontWeight: FontWeight.bold,
+                                      color: finalOrderAmount > 0 ? Colors.blueAccent : Colors.grey.shade400,
+                                    ),
                                   ),
                                 ),
-                              ),
-                              IconButton(
-                                icon: const Icon(Icons.add_circle_outline, color: Colors.blueAccent),
-                                padding: EdgeInsets.zero,
-                                constraints: const BoxConstraints(),
-                                onPressed: () {
-                                  setState(() {
-                                    item.manualAdjustment++;
-                                  });
-                                },
-                              ),
-                            ],
+                                // +1 ボタン
+                                IconButton(
+                                  icon: const Icon(Icons.add_circle_outline, color: Colors.blueAccent),
+                                  padding: EdgeInsets.zero,
+                                  constraints: const BoxConstraints(),
+                                  onPressed: () {
+                                    setState(() {
+                                      item.manualAdjustment++;
+                                    });
+                                    updateSingleHallItem(item);
+                                  },
+                                ),
+                                // +5 ボタン
+                                IconButton(
+                                  icon: const Icon(Icons.keyboard_double_arrow_right, color: Colors.blueAccent),
+                                  padding: EdgeInsets.zero,
+                                  constraints: const BoxConstraints(),
+                                  onPressed: () {
+                                    setState(() {
+                                      item.manualAdjustment += 5;
+                                    });
+                                    updateSingleHallItem(item);
+                                  },
+                                ),
+                              ],
+                            ),
                           ),
-                        ),
-                      ],
+                        ],
+                      ),
                     ),
-                  ),
-                  const Divider(height: 1, thickness: 0.5, indent: 16, endIndent: 16),
-                ],
+                    const Divider(height: 1, thickness: 0.5, indent: 16, endIndent: 16),
+                  ],
+                ),
               );
             }),
           ],
@@ -321,6 +542,7 @@ class _ReplenishmentTabState extends State<ReplenishmentTab> {
                     setState(() {
                       item.isChecked = value ?? false;
                     });
+                    updateSingleHallItem(item);
                   },
                 )),
           ],

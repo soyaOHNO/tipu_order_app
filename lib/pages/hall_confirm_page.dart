@@ -5,12 +5,12 @@ import '../data/hall_item_data.dart';
 class HallConfirmPage extends StatelessWidget {
   const HallConfirmPage({super.key});
 
-  @override
+@override
   Widget build(BuildContext context) {
-    // 1. 発注が必要なドリンク（合算発注数が1以上）を抽出
+    // ★変更：発注数1以上、またはメモが書かれているアイテムを抽出
     final activeDrinks = mockDrinkItems.where((item) {
       final finalAmount = item.calculateTotalOrderAmount(mockDrinkItems) + item.manualAdjustment;
-      return finalAmount > 0;
+      return finalAmount > 0 || item.userMemo.isNotEmpty;
     }).toList();
 
     final activeSupplies = mockSupplyItems.where((item) => item.isChecked).toList();
@@ -47,10 +47,18 @@ class HallConfirmPage extends StatelessWidget {
           ...items.map((item) {
             String displayText = '';
             if (activeSupplies.contains(item)) {
-              displayText = '${item.name} × 1';
+              displayText = '${item.name} × 1'; // 補充はチェックマークなので×1扱い
             } else {
               int amount = item.calculateTotalOrderAmount(mockDrinkItems) + item.manualAdjustment;
-              displayText = '${item.name} × $amount';
+              if (amount > 0) {
+                displayText = '${item.name} × $amount';
+              } else {
+                displayText = item.name; // 個数が0でもメモのために表示する場合
+              }
+            }
+
+            if (item.userMemo.isNotEmpty) {
+              displayText += ' (${item.userMemo})';
             }
 
             return Padding(

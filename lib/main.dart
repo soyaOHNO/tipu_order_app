@@ -2,8 +2,8 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'firebase_options.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 
 import 'pages/order_home_page.dart';
 import 'data/item_data.dart';
@@ -15,16 +15,18 @@ import 'data/dish_data.dart';
 import 'pages/dish_edit_page.dart';
 import 'pages/hall_order_page.dart';
 import 'data/hall_item_data.dart';
+import 'pages/hall_master_edit_page.dart'; // ★追加：ホールマスタ編集ページ
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await dotenv.load(fileName: ".env");
   
-  // ★追加：Firebaseの初期化
+  // Firebaseの初期化
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,
   );
   
-  // ★追加：Firestoreのローカルキャッシュを有効化（オフライン対応）
+  // Firestoreのローカルキャッシュを有効化（オフライン対応）
   FirebaseFirestore.instance.settings = const Settings(persistenceEnabled: true);
   
   await loadItemMaster(); 
@@ -34,8 +36,6 @@ void main() async {
   
   runApp(const MyApp());
 }
-
-
 
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
@@ -84,7 +84,7 @@ class TopMenuPage extends StatelessWidget {
               },
             ),
 
-            // 4. ホール発注（紫）
+            // 2. ホール発注（紫）
             MenuButton(
               title: 'ホール発注',
               icon: Icons.assignment,
@@ -97,7 +97,7 @@ class TopMenuPage extends StatelessWidget {
               },
             ),
 
-            // 2. 予約状況（そのままブルー）
+            // 3. 予約状況（そのままブルー）
             MenuButton(
               title: '明日の予約状況\n(トレタ連携デモ)',
               icon: Icons.book_online,
@@ -109,53 +109,12 @@ class TopMenuPage extends StatelessWidget {
                 );
               },
             ),
-
-            // 3. キャッシュクリア（赤色・確認ダイアログ付き）
-            MenuButton(
-              title: 'キャッシュクリア\n(マスタ再読み込み)',
-              icon: Icons.cleaning_services,
-              color: Colors.redAccent,
-              onTap: () async {
-                // 間違えて押さないように確認ダイアログを表示
-                final confirm = await showDialog<bool>(
-                  context: context,
-                  builder: (_) => AlertDialog(
-                    title: const Text('キャッシュクリアの確認'),
-                    content: const Text('端末に保存されているメモやキャッシュを消去し、マスタデータを最新の状態に再読み込みします。\n（※現在入力中の発注データは消えません）\n\n本当によろしいですか？'),
-                    actions: [
-                      TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('キャンセル')),
-                      TextButton(onPressed: () => Navigator.pop(context, true), child: const Text('実行', style: TextStyle(color: Colors.red))),
-                    ],
-                  ),
-                );
-
-                if (confirm != true) return; // キャンセルされたら処理を中断
-
-                // ① ローカルのキャッシュ（メモや日付データなど）を全て削除
-                final prefs = await SharedPreferences.getInstance();
-                await prefs.clear();
-
-                // ② 各マスタデータをFirestoreから再読み込み
-                await loadItemMaster();
-                await loadDishes();
-                await loadCourseRecipes();
-                
-                if (context.mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('キャッシュをクリアし、マスタデータを最新にしました！'),
-                      backgroundColor: Colors.green,
-                    ),
-                  );
-                }
-              },
-            ),
             
-            // 4. 発注品マスタ編集（マスタ系：爽やかな明るい薄緑「shade300」）
+            // 4. 発注品マスタ編集（マスタ系：爽やかな明るい薄緑「shade600」）
             MenuButton(
               title: '発注品マスタ編集',
               icon: Icons.edit_note,
-              color: Colors.lightGreen.shade600, // ★明るい薄緑
+              color: Colors.lightGreen.shade600,
               onTap: () {
                 Navigator.push(
                   context,
@@ -164,12 +123,24 @@ class TopMenuPage extends StatelessWidget {
               },
             ),
 
-            // 5. 料理マスタ編集（マスタ系：標準的な中間の黄緑「shade500」）
-            // ★目線のフロー（食材➔料理➔コース）に合わせるため、5番と6番の配置順を入れ替えました！
+            // 5. ホール商品マスタ編集（★新規追加：ホールを意識したブルーグリーン）
+            MenuButton(
+              title: 'ホール商品マスタ編集',
+              icon: Icons.liquor, // ドリンクをイメージするアイコン
+              color: Colors.teal.shade400, 
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const HallMasterEditPage()),
+                );
+              },
+            ),
+
+            // 6. 料理マスタ編集（マスタ系：標準的な中間の黄緑「shade500」）
             MenuButton(
               title: '料理マスタ編集',
               icon: Icons.lunch_dining,
-              color: Colors.lightGreen.shade500, // ★中間の黄緑
+              color: Colors.lightGreen.shade500,
               onTap: () {
                 Navigator.push(
                   context,
@@ -178,11 +149,11 @@ class TopMenuPage extends StatelessWidget {
               },
             ),
 
-            // 6. コースレシピ編集（マスタ系：少し深い落ち着いた緑「shade700」）
+            // 7. コースレシピ編集（マスタ系：少し深い落ち着いた緑「shade400」）
             MenuButton(
               title: 'コースレシピ編集',
               icon: Icons.restaurant_menu,
-              color: Colors.lightGreen.shade400, // ★深い引き締まった緑
+              color: Colors.lightGreen.shade400,
               onTap: () {
                 Navigator.push(
                   context,

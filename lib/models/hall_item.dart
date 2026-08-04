@@ -19,6 +19,7 @@ class HallItem {
   int stock;      
   bool isChecked; 
   int manualAdjustment; 
+  String userMemo;
 
   HallItem({
     required this.id,
@@ -34,6 +35,7 @@ class HallItem {
     this.isSupply = false,
     this.isChecked = false,
     this.manualAdjustment = 0,
+    this.userMemo = '',
   }) : 
        opened = targetOpened,
        unopened = targetUnopened,
@@ -71,8 +73,10 @@ class HallItem {
     int shortage = totalTarget - totalCurrent;
     if (shortage <= 0) return 0;
 
-    // ケース単位（切り下げ）計算
-    return (shortage ~/ orderUnit) * orderUnit;
+    // ★修正：ケース単位（切り上げ）計算
+    // 不足分(shortage)を満たすために必要な「単位数」を算出して発注する
+    // 例: 2本不足で、8本単位(orderUnit)の場合 -> 1ケース(8本)になる
+    return ((shortage + orderUnit - 1) ~/ orderUnit) * orderUnit;
   }
 
   factory HallItem.fromJson(Map<String, dynamic> json) {
@@ -88,6 +92,7 @@ class HallItem {
       orderUnit: json['orderUnit'] as int? ?? 1,
       memo: json['memo'] as String? ?? '',
       isSupply: json['isSupply'] as bool? ?? false,
+      userMemo: json['userMemo'] as String? ?? '',
     );
   }
 
@@ -104,6 +109,7 @@ class HallItem {
       'orderUnit': orderUnit,
       'memo': memo,
       'isSupply': isSupply,
+      'userMemo': userMemo,
     };
   }
 }
