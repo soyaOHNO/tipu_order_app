@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../models/reservation.dart';
 import '../data/reservation_data.dart';
+import 'dart:io';
+import 'dart:convert';
+import 'package:charset_converter/charset_converter.dart';
 
 class ReservationPage extends StatefulWidget {
   const ReservationPage({super.key});
@@ -181,6 +184,61 @@ class _ReservationPageState extends State<ReservationPage> {
     return buffer.toString();
   }
 
+  // ★ 追加：キッチンプリンタへ直接データを送る関数
+  Future<void> _printToKitchenPrinter(BuildContext context, String printText) async {
+    // 送信中のスナックバー表示
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('プリンタへ送信中...')),
+    );
+
+    // 仕様書で確認したIPとポート
+    final String ip = '192.168.32.202'; // 動かなければ 203 に変更してください
+    final int port = 9100;
+
+    try {
+      Socket socket = await Socket.connect(ip, port, timeout: const Duration(seconds: 5));
+
+      // 1. プリンタ初期化コマンド (ESC @)
+      socket.add([0x1B, 0x40]);
+
+      // 2. 文字サイズ設定（予約一覧なので少し見やすくする）
+      // 標準サイズにしたい場合はこの行をコメントアウトしてください
+      // socket.add([0x1B, 0x21, 0x00]); 
+
+      // 3. テキストデータの送信
+      // パッケージを使って Shift-JIS に変換！
+      final encodedText = await CharsetConverter.encode("Shift_JIS", printText);
+      socket.add(encodedText);
+
+      // 4. 余白のための改行（紙を少し送る）
+      socket.add(utf8.encode('\n\n\n\n\n'));
+
+      // 5. 用紙カットコマンド (GS V 0)
+      socket.add([0x1D, 0x56, 0x00]);
+
+      await socket.flush();
+      socket.destroy();
+
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('印刷が完了しました！', style: TextStyle(color: Colors.white)),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('印刷エラー: プリンタとの通信に失敗しました ($e)'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
   Future<void> _handlePrintAction(BuildContext context) async {
     final printText = _generatePrintFormat();
     if (!context.mounted) return;
@@ -279,18 +337,21 @@ class _ReservationPageState extends State<ReservationPage> {
             ),
           ),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(context), child: const Text('閉じる')),
+            TextButton(
+              onPressed: () => Navigator.pop(context), 
+              child: const Text('閉じる')
+            ),
+            // ★ 追加：キッチンプリンタへの直接印刷ボタン
             ElevatedButton.icon(
-              icon: const Icon(Icons.copy),
-              label: const Text('コピーする'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.blueAccent,
+                foregroundColor: Colors.white,
+              ),
+              icon: const Icon(Icons.print),
+              label: const Text('印刷'),
               onPressed: () async {
-                await Clipboard.setData(ClipboardData(text: printText));
-                if (context.mounted) {
-                  Navigator.pop(context);
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('伝票テキストをコピーしました！'), backgroundColor: Colors.green),
-                  );
-                }
+                Navigator.pop(context); // ダイアログを閉じる
+                await _printToKitchenPrinter(context, printText); // 印刷実行！
               },
             ),
           ],

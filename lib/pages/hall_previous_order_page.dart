@@ -244,7 +244,7 @@ class _HallPreviousOrderPageState extends State<HallPreviousOrderPage> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('ホール発注 履歴'),
+        title: const Text('発注履歴'),
         backgroundColor: Colors.indigo,
         foregroundColor: Colors.white,
       ),

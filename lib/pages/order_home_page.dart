@@ -366,13 +366,13 @@ class _OrderHomePageState extends State<OrderHomePage> with WidgetsBindingObserv
             },
           ),
           IconButton(
-            icon: const Icon(Icons.note_alt_outlined),
+            icon: const Icon(Icons.edit_note),
             onPressed: () {
               Navigator.push(context, MaterialPageRoute(builder: (_) => const MemoPage()));
             },
           ),
           IconButton(
-            icon: const Icon(Icons.edit_note),
+            icon: const Icon(Icons.note_alt_outlined),
             onPressed: () {
               Navigator.push(context, MaterialPageRoute(builder: (_) => BoardPage(orders: orders)));
             },

@@ -76,7 +76,7 @@ class HallConfirmPage extends StatelessWidget {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('ホール発注 最終確認'),
+        title: const Text('発注確認'),
         backgroundColor: Colors.indigo,
         foregroundColor: Colors.white,
       ),

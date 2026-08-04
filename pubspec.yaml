@@ -16,7 +16,7 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
 # In Windows, build-name is used as the major, minor, and patch parts
 # of the product and file versions while build-number is used as the build suffix.
-version: 1.0.0+1
+version: 1.0.3+4
 
 environment:
   sdk: ^3.12.2
@@ -30,7 +30,7 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
-  # ここにパッケージを追加（バージョンは適宜最新を使ってください）
+  # 驍ｵ・ｺ髦ｮ蜻ｻ・ｼ繝ｻ・ｸ・ｺ繝ｻ・ｫ驛｢譏懶ｽｻ・｣郢晢ｽ｣驛｢・ｧ繝ｻ・ｱ驛｢譎｢・ｽ・ｼ驛｢・ｧ繝ｻ・ｸ驛｢・ｧ陞ｳ螟ｲ・ｽ・ｿ繝ｻ・ｽ髯ｷ莨夲ｽ｣・ｰ郢晢ｽｻ陋ｹ・ｻ郢晢ｽｰ驛｢譎｢・ｽ・ｼ驛｢・ｧ繝ｻ・ｸ驛｢譎｢・ｽ・ｧ驛｢譎｢・ｽ・ｳ驍ｵ・ｺ繝ｻ・ｯ鬯ｩ蛹・ｽｽ・ｩ髯橸ｽｳ隲帛沺ﾂ蜻ｵ・ｭ繝ｻ・ｽ・ｰ驛｢・ｧ陷代・・ｽ・ｽ繝ｻ・ｿ驍ｵ・ｺ繝ｻ・｣驍ｵ・ｺ繝ｻ・ｦ驍ｵ・ｺ闕ｳ蟯ｩ蜻ｳ驍ｵ・ｺ髴郁ｲｻ・ｼ讒ｭ繝ｻ郢晢ｽｻ
   http: ^1.6.0
   flutter_dotenv: ^6.0.1
 
@@ -39,6 +39,8 @@ dependencies:
   path_provider: ^2.1.6
   firebase_core: ^4.11.0
   cloud_firestore: ^6.6.0
+  charset_converter: ^2.5.1
+  package_info_plus: ^10.2.1
 
 dev_dependencies:
   flutter_test:
@@ -61,7 +63,7 @@ flutter:
   # included with your application, so that you can use the icons in
   # the material Icons class.
   uses-material-design: true
-  # assetsはここに書きます（dependenciesの中ではない！）
+  # assets驍ｵ・ｺ繝ｻ・ｯ驍ｵ・ｺ髦ｮ蜻ｻ・ｼ繝ｻ・ｸ・ｺ繝ｻ・ｫ髫ｴ蜴・ｽｽ・ｸ驍ｵ・ｺ鬮ｦ・ｪ遶擾ｽｪ驍ｵ・ｺ陷ｻ・ｻ繝ｻ・ｼ郢晢ｽｻependencies驍ｵ・ｺ繝ｻ・ｮ髣包ｽｳ繝ｻ・ｭ驍ｵ・ｺ繝ｻ・ｧ驍ｵ・ｺ繝ｻ・ｯ驍ｵ・ｺ繝ｻ・ｪ驍ｵ・ｺ郢晢ｽｻ繝ｻ・ｼ郢晢ｽｻ繝ｻ・ｼ郢晢ｽｻ
   assets:
     - .env
 

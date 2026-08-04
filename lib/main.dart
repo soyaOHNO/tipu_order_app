@@ -1,4 +1,4 @@
-// flutter run -d chrome
+// flutter run -d chrome --dart-define-from-file=.env
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'firebase_options.dart';
@@ -15,7 +15,8 @@ import 'data/dish_data.dart';
 import 'pages/dish_edit_page.dart';
 import 'pages/hall_order_page.dart';
 import 'data/hall_item_data.dart';
-import 'pages/hall_master_edit_page.dart'; // ★追加：ホールマスタ編集ページ
+import 'pages/hall_master_edit_page.dart';
+import 'utils/version_check.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -25,6 +26,8 @@ void main() async {
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,
   );
+  // アプリ起動時にバージョンチェックを実施
+  await checkAppVersionAndReload();
   
   // Firestoreのローカルキャッシュを有効化（オフライン対応）
   FirebaseFirestore.instance.settings = const Settings(persistenceEnabled: true);
@@ -43,7 +46,7 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'みらんちぷ業務管理',
+      title: 'みらんちぷ発注管理',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
         colorSchemeSeed: Colors.orange,
@@ -61,7 +64,7 @@ class TopMenuPage extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('みらんちぷ業務管理'),
+        title: const Text('みらんちぷ発注管理'),
         centerTitle: true,
       ),
       body: Padding(
@@ -73,7 +76,7 @@ class TopMenuPage extends StatelessWidget {
           children: [
             // 1. 発注管理（そのままオレンジ）
             MenuButton(
-              title: '発注管理',
+              title: 'キッチン発注',
               icon: Icons.assignment,
               color: Colors.orange,
               onTap: () {
@@ -99,7 +102,7 @@ class TopMenuPage extends StatelessWidget {
 
             // 3. 予約状況（そのままブルー）
             MenuButton(
-              title: '明日の予約状況\n(トレタ連携デモ)',
+              title: '予約確認',
               icon: Icons.book_online,
               color: Colors.blue,
               onTap: () {
@@ -112,7 +115,7 @@ class TopMenuPage extends StatelessWidget {
             
             // 4. 発注品マスタ編集（マスタ系：爽やかな明るい薄緑「shade600」）
             MenuButton(
-              title: '発注品マスタ編集',
+              title: 'キッチン発注品マスタ編集',
               icon: Icons.edit_note,
               color: Colors.lightGreen.shade600,
               onTap: () {

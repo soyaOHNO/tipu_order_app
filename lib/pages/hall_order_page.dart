@@ -38,7 +38,7 @@ class _HallOrderHomePageState extends State<HallOrderHomePage> {
       length: 3,
       child: Scaffold(
         appBar: AppBar(
-          title: const Text('ホール発注'),
+          title: const Text('発注入力'),
           actions: [
             IconButton(
               icon: const Icon(Icons.history),
@@ -153,7 +153,7 @@ class _InventoryInputTabState extends State<InventoryInputTab> {
               ),
             ),
             ...itemsInCategory.map((item) {
-              final isStockOnly = item.sameId != null;
+              final isStockOnly = item.category == '冷蔵庫③-1段目' || item.category == '冷蔵庫③-2段目' || item.category == '冷蔵庫③-3段目' || item.category == '冷蔵庫③-4段目';
 
               return Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -161,21 +161,31 @@ class _InventoryInputTabState extends State<InventoryInputTab> {
                   children: [
                     Expanded(
                       flex: 2,
-                      child: Text(item.name, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                      // ★ 修正：テキストが長すぎる場合は自動で縮小させる
+                      child: FittedBox(
+                        fit: BoxFit.scaleDown,
+                        alignment: Alignment.centerLeft,
+                        child: Text(item.name, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                      ),
                     ),
                     Expanded(
                       flex: 4,
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.end,
-                        children: isStockOnly
-                            ? [
-                                _buildCounter('ストック (目標:${item.targetStock})', item.stock, item, context, (val) => setState(() => item.stock = val)),
-                              ]
-                            : [
-                                _buildCounter('開 (目標:${item.targetOpened})', item.opened, item, context, (val) => setState(() => item.opened = val)),
-                                const SizedBox(width: 8),
-                                _buildCounter('未 (目標:${item.targetUnopened})', item.unopened, item, context, (val) => setState(() => item.unopened = val)),
-                              ],
+                      // ★ 修正：右側のボタン群も狭い画面ではみ出さないよう全体を縮小させる
+                      child: FittedBox(
+                        fit: BoxFit.scaleDown,
+                        alignment: Alignment.centerRight,
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.end,
+                          children: isStockOnly
+                              ? [
+                                  _buildCounter('ストック (${item.targetStock})', item.stock, item, context, (val) => setState(() => item.stock = val)),
+                                ]
+                              : [
+                                  _buildCounter_open('開 (${item.targetOpened})', item.opened, item, context, (val) => setState(() => item.opened = val)),
+                                  const SizedBox(width: 8),
+                                  _buildCounter('未 (${item.targetUnopened})', item.unopened, item, context, (val) => setState(() => item.unopened = val)),
+                                ],
+                        ),
                       ),
                     ),
                   ],
@@ -188,12 +198,55 @@ class _InventoryInputTabState extends State<InventoryInputTab> {
     );
   }
 
+  Widget _buildCounter_open(String label, int value, HallItem item, BuildContext context, Function(int) onChanged) {
+    final screenWidth = MediaQuery.of(context).size.width;
+    // 4つのボタンを並べるためサイズを少し小さめに調整
+    final double buttonSize = screenWidth * 0.075; 
+    final double valueTextSize = screenWidth * 0.04; 
+    final double labelTextSize = screenWidth * 0.035;
+
+    return Column(
+      children: [
+        Text(label, style: TextStyle(fontSize: labelTextSize, color: Colors.grey)),
+        Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // -1 ボタン
+            IconButton(
+              icon: Icon(Icons.remove_circle_outline, color: Colors.redAccent, size: buttonSize),
+              constraints: const BoxConstraints(),
+              padding: EdgeInsets.zero,
+              onPressed: value > 0 ? () {
+                onChanged(value - 1);
+                updateSingleHallItem(item);
+              } : null,
+            ),
+            Padding(
+              padding: EdgeInsets.symmetric(horizontal: screenWidth * 0.01),
+              child: Text('$value', style: TextStyle(fontSize: valueTextSize, fontWeight: FontWeight.bold)),
+            ),
+            // +1 ボタン
+            IconButton(
+              icon: Icon(Icons.add_circle_outline, color: Colors.blueAccent, size: buttonSize),
+              constraints: const BoxConstraints(),
+              padding: EdgeInsets.zero,
+              onPressed: () {
+                onChanged(value + 1);
+                updateSingleHallItem(item);
+              },
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
   Widget _buildCounter(String label, int value, HallItem item, BuildContext context, Function(int) onChanged) {
     final screenWidth = MediaQuery.of(context).size.width;
     // 4つのボタンを並べるためサイズを少し小さめに調整
-    final double buttonSize = screenWidth * 0.055; 
-    final double valueTextSize = screenWidth * 0.045; 
-    final double labelTextSize = screenWidth * 0.025;
+    final double buttonSize = screenWidth * 0.075; 
+    final double valueTextSize = screenWidth * 0.04; 
+    final double labelTextSize = screenWidth * 0.035;
 
     return Column(
       children: [
@@ -308,10 +361,19 @@ class _OrderManagementTabState extends State<OrderManagementTab> {
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  Text(item.name, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                                  // ★ 修正
+                                  FittedBox(
+                                    fit: BoxFit.scaleDown,
+                                    alignment: Alignment.centerLeft,
+                                    child: Text(item.name, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                                  ),
                                   if (item.memo.isNotEmpty) ...[
                                     const SizedBox(height: 4),
-                                    Text('⚠️ ${item.memo}', style: const TextStyle(fontSize: 12, color: Colors.redAccent, fontWeight: FontWeight.bold)),
+                                    FittedBox(
+                                      fit: BoxFit.scaleDown,
+                                      alignment: Alignment.centerLeft,
+                                      child: Text('⚠️ ${item.memo}', style: const TextStyle(fontSize: 12, color: Colors.redAccent, fontWeight: FontWeight.bold)),
+                                    ),
                                   ],
                                 ],
                               ),
@@ -403,86 +465,105 @@ class _OrderManagementTabState extends State<OrderManagementTab> {
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Text(item.name, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                                // ★ 修正
+                                FittedBox(
+                                  fit: BoxFit.scaleDown,
+                                  alignment: Alignment.centerLeft,
+                                  child: Text(item.name, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                                ),
                                 if (item.memo.isNotEmpty) ...[
                                   const SizedBox(height: 4),
-                                  Text('⚠️ ${item.memo}', style: const TextStyle(fontSize: 12, color: Colors.redAccent, fontWeight: FontWeight.bold)),
+                                  FittedBox(
+                                    fit: BoxFit.scaleDown,
+                                    alignment: Alignment.centerLeft,
+                                    child: Text('⚠️ ${item.memo}', style: const TextStyle(fontSize: 12, color: Colors.redAccent, fontWeight: FontWeight.bold)),
+                                  ),
                                 ],
                                 const SizedBox(height: 4),
-                                Text(
-                                  '【開】${item.opened}/${item.targetOpened} 【未】${item.unopened}/${item.targetUnopened}'
-                                  '${pairedItem != null ? " 【庫③】${pairedItem.stock}/${pairedItem.targetStock}" : ""}',
-                                  style: const TextStyle(fontSize: 12, color: Colors.black87),
+                                // ★ 修正
+                                FittedBox(
+                                  fit: BoxFit.scaleDown,
+                                  alignment: Alignment.centerLeft,
+                                  child: Text(
+                                    '【開】${item.opened}/${item.targetOpened} 【未】${item.unopened}/${item.targetUnopened}'
+                                    '${pairedItem != null ? " 【庫③】${pairedItem.stock}/${pairedItem.targetStock}" : ""}',
+                                    style: const TextStyle(fontSize: 12, color: Colors.black87),
+                                  ),
                                 ),
                               ],
                             ),
                           ),
                           Expanded(
                             flex: 7, // ボタンが多いため、右側の幅を少し広めに確保
-                            child: Row(
-                              mainAxisAlignment: MainAxisAlignment.end,
-                              children: [
-                                // -5 ボタン
-                                IconButton(
-                                  icon: const Icon(Icons.keyboard_double_arrow_left, color: Colors.blueGrey),
-                                  padding: EdgeInsets.zero,
-                                  constraints: const BoxConstraints(),
-                                  onPressed: finalOrderAmount > 0 ? () {
-                                    setState(() {
-                                      int decrease = finalOrderAmount >= 5 ? 5 : finalOrderAmount;
-                                      item.manualAdjustment -= decrease;
-                                    });
-                                    updateSingleHallItem(item);
-                                  } : null,
-                                ),
-                                // -1 ボタン
-                                IconButton(
-                                  icon: const Icon(Icons.remove_circle_outline, color: Colors.blueGrey),
-                                  padding: EdgeInsets.zero,
-                                  constraints: const BoxConstraints(),
-                                  onPressed: finalOrderAmount > 0 ? () {
-                                    setState(() {
-                                      item.manualAdjustment--;
-                                    });
-                                    updateSingleHallItem(item);
-                                  } : null,
-                                ),
-                                Padding(
-                                  padding: const EdgeInsets.symmetric(horizontal: 4),
-                                  child: Text(
-                                    '$finalOrderAmount',
-                                    style: TextStyle(
-                                      fontSize: 22, 
-                                      fontWeight: FontWeight.bold,
-                                      color: finalOrderAmount > 0 ? Colors.blueAccent : Colors.grey.shade400,
+                            // ★ 修正：右側のボタン群も狭い画面ではみ出さないよう全体を縮小
+                            child: FittedBox(
+                              fit: BoxFit.scaleDown,
+                              alignment: Alignment.centerRight,
+                              child: Row(
+                                mainAxisAlignment: MainAxisAlignment.end,
+                                children: [
+                                  // -5 ボタン
+                                  IconButton(
+                                    icon: const Icon(Icons.keyboard_double_arrow_left, color: Colors.blueGrey),
+                                    padding: EdgeInsets.zero,
+                                    constraints: const BoxConstraints(),
+                                    onPressed: finalOrderAmount > 0 ? () {
+                                      setState(() {
+                                        int decrease = finalOrderAmount >= 5 ? 5 : finalOrderAmount;
+                                        item.manualAdjustment -= decrease;
+                                      });
+                                      updateSingleHallItem(item);
+                                    } : null,
+                                  ),
+                                  // -1 ボタン
+                                  IconButton(
+                                    icon: const Icon(Icons.remove_circle_outline, color: Colors.blueGrey),
+                                    padding: EdgeInsets.zero,
+                                    constraints: const BoxConstraints(),
+                                    onPressed: finalOrderAmount > 0 ? () {
+                                      setState(() {
+                                        item.manualAdjustment--;
+                                      });
+                                      updateSingleHallItem(item);
+                                    } : null,
+                                  ),
+                                  Padding(
+                                    padding: const EdgeInsets.symmetric(horizontal: 4),
+                                    child: Text(
+                                      '$finalOrderAmount',
+                                      style: TextStyle(
+                                        fontSize: 22, 
+                                        fontWeight: FontWeight.bold,
+                                        color: finalOrderAmount > 0 ? Colors.blueAccent : Colors.grey.shade400,
+                                      ),
                                     ),
                                   ),
-                                ),
-                                // +1 ボタン
-                                IconButton(
-                                  icon: const Icon(Icons.add_circle_outline, color: Colors.blueAccent),
-                                  padding: EdgeInsets.zero,
-                                  constraints: const BoxConstraints(),
-                                  onPressed: () {
-                                    setState(() {
-                                      item.manualAdjustment++;
-                                    });
-                                    updateSingleHallItem(item);
-                                  },
-                                ),
-                                // +5 ボタン
-                                IconButton(
-                                  icon: const Icon(Icons.keyboard_double_arrow_right, color: Colors.blueAccent),
-                                  padding: EdgeInsets.zero,
-                                  constraints: const BoxConstraints(),
-                                  onPressed: () {
-                                    setState(() {
-                                      item.manualAdjustment += 5;
-                                    });
-                                    updateSingleHallItem(item);
-                                  },
-                                ),
-                              ],
+                                  // +1 ボタン
+                                  IconButton(
+                                    icon: const Icon(Icons.add_circle_outline, color: Colors.blueAccent),
+                                    padding: EdgeInsets.zero,
+                                    constraints: const BoxConstraints(),
+                                    onPressed: () {
+                                      setState(() {
+                                        item.manualAdjustment++;
+                                      });
+                                      updateSingleHallItem(item);
+                                    },
+                                  ),
+                                  // +5 ボタン
+                                  IconButton(
+                                    icon: const Icon(Icons.keyboard_double_arrow_right, color: Colors.blueAccent),
+                                    padding: EdgeInsets.zero,
+                                    constraints: const BoxConstraints(),
+                                    onPressed: () {
+                                      setState(() {
+                                        item.manualAdjustment += 5;
+                                      });
+                                      updateSingleHallItem(item);
+                                    },
+                                  ),
+                                ],
+                              ),
                             ),
                           ),
                         ],
@@ -534,7 +615,12 @@ class _ReplenishmentTabState extends State<ReplenishmentTab> {
               ),
             ),
             ...itemsInCategory.map((item) => CheckboxListTile(
-                  title: Text(item.name),
+                  // ★ 修正
+                  title: FittedBox(
+                    fit: BoxFit.scaleDown,
+                    alignment: Alignment.centerLeft,
+                    child: Text(item.name),
+                  ),
                   subtitle: const Text('発注が必要な場合はチェック'),
                   value: item.isChecked,
                   activeColor: Colors.deepOrange,

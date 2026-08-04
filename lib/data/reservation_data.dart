@@ -8,13 +8,13 @@ Future<List<Reservation>> fetchTodayReservations(String dateString) async {
   final String apiUrl = 'https://us-central1-tipu-order.cloudfunctions.net/get_reservations?date=$dateString';
   
   // ★ .envファイルから「SECRET_API_KEY」を取得
-  final String apiKey = dotenv.env['SECRET_API_KEY'] ?? ''; 
+  const secretApiKey = String.fromEnvironment('SECRET_API_KEY', defaultValue: ''); 
 
   try {
     final response = await http.get(
       Uri.parse(apiUrl),
       headers: {
-        'X-API-KEY': apiKey,
+        'X-API-KEY': secretApiKey,
       },
     );
 

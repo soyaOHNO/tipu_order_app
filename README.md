@@ -78,6 +78,12 @@ firebase deploy --only hosting
 
 ## Update
 ```bash
-flutter build web --release
+flutter build web --release --dart-define-from-file=.env
 firebase deploy --only hosting
+
+```
+
+## Version Control
+```PowerShell
+.\deploy.ps1
 ```
