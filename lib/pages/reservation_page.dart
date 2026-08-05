@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:url_launcher/url_launcher.dart';
+import 'dart:html' as html;
 import '../models/reservation.dart';
 import '../data/reservation_data.dart';
 import 'package:flutter/services.dart';
@@ -197,33 +197,19 @@ class _ReservationPageState extends State<ReservationPage> {
     try {
       _showDebugSnackBar(context, '【Step 2】クリップボードへコピーを実行します');
       
-      // 無言でフリーズした場合に備えて、2秒でタイムアウトさせる
       await Clipboard.setData(ClipboardData(text: xmlData)).timeout(
         const Duration(seconds: 2),
         onTimeout: () {
-          throw Exception('Timeout: クリップボード処理がフリーズしました。Safariの仕様によるブロックです。');
+          throw Exception('Timeout: クリップボード処理がフリーズしました。Safariのブロックです。');
         },
       );
       
-      _showDebugSnackBar(context, '【Step 3】コピー成功！ショートカット起動へ進みます');
+      _showDebugSnackBar(context, '【Step 3】コピー成功！ショートカットを起動します');
 
-      final url = Uri.parse('shortcuts://run-shortcut?name=PrintOrder');
-
-      _showDebugSnackBar(context, '【Step 4】launchUrl($url) を実行します');
+      // ★ 修正：url_launcher を使わず、Web標準機能で強制的にジャンプする！
+      html.window.location.href = 'shortcuts://run-shortcut?name=PrintOrder';
       
-      // こちらも3秒でタイムアウト設定
-      bool launched = await launchUrl(url, mode: LaunchMode.externalApplication).timeout(
-        const Duration(seconds: 3),
-        onTimeout: () {
-          throw Exception('Timeout: launchUrl処理がフリーズしました。');
-        },
-      );
-      
-      if (launched) {
-         _showDebugSnackBar(context, '【Step 5】launchUrl成功 (戻り値: true)');
-      } else {
-         _showDebugSnackBar(context, '【Step 5】launchUrl失敗 (戻り値: false) - ブラウザが起動を拒否しました', isError: true);
-      }
+      _showDebugSnackBar(context, '【Step 4】ショートカットアプリへ移行しました');
       
     } catch (e, stackTrace) {
       debugPrint('🚨 印刷エラー詳細: $e\n$stackTrace');
