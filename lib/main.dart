@@ -22,22 +22,76 @@ void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await dotenv.load(fileName: ".env");
   
-  // Firebaseの初期化
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,
   );
-  // アプリ起動時にバージョンチェックを実施
+  
+  // バージョンチェックだけは先に行う（ここで引っかかるとリロードされるため）
   await checkAppVersionAndReload();
   
-  // Firestoreのローカルキャッシュを有効化（オフライン対応）
   FirebaseFirestore.instance.settings = const Settings(persistenceEnabled: true);
   
-  await loadItemMaster(); 
-  await loadHallItems();
-  await loadDishes();
-  await loadCourseRecipes();
-  
+  // ❌ ここにあった await load... は消す！
+  // ⭕️ 通信を待たずに、即座にアプリを起動して画面を出す！
   runApp(const MyApp());
+}
+
+// -----------------------------------------------------
+// ★ TipuOrderApp の中身（もしくはホーム画面の初期化処理）を
+// 以下の「Splash画面（ローディング画面）」を経由するように変更します。
+// -----------------------------------------------------
+
+class SplashScreen extends StatefulWidget {
+  const SplashScreen({super.key});
+
+  @override
+  State<SplashScreen> createState() => _SplashScreenState();
+}
+
+class _SplashScreenState extends State<SplashScreen> {
+  @override
+  void initState() {
+    super.initState();
+    _loadAllData();
+  }
+
+  // ここで裏側でデータを読み込む
+  Future<void> _loadAllData() async {
+    try {
+      await loadItemMaster();
+      await loadHallItems();
+      await loadDishes();
+      await loadCourseRecipes();
+      
+      // 読み込みが終わったら、本来のトップ画面（TopMenuPageなど）に遷移する
+      if (mounted) {
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (_) => const TopMenuPage()), // ← アプリのトップ画面に置き換えてください
+        );
+      }
+    } catch (e) {
+      debugPrint("データ読み込みエラー: $e");
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    // ユーザーにはすぐにこの「くるくる」画面が表示されるのでストレスが減る
+    return const Scaffold(
+      backgroundColor: Colors.indigo,
+      body: Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            CircularProgressIndicator(color: Colors.white),
+            SizedBox(height: 16),
+            Text('マスタデータを読み込み中...', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+          ],
+        ),
+      ),
+    );
+  }
 }
 
 class MyApp extends StatelessWidget {
@@ -52,7 +106,7 @@ class MyApp extends StatelessWidget {
         colorSchemeSeed: Colors.orange,
         useMaterial3: true,
       ),
-      home: const TopMenuPage(),
+      home: const SplashScreen(),
     );
   }
 }

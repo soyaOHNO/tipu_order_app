@@ -7,7 +7,7 @@ Future<void> checkAppVersionAndReload() async {
   try {
     // ★ pubspec.yaml に書かれているバージョンを自動取得！
     final packageInfo = await PackageInfo.fromPlatform();
-    final currentAppVersion = packageInfo.version; 
+    final currentAppVersion = '${packageInfo.version}+${packageInfo.buildNumber}';
 
     // Firestoreから最新バージョンを取得
     final doc = await FirebaseFirestore.instance.collection('app_info').doc('version').get();

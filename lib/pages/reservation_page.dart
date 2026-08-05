@@ -1,10 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
+import 'package:url_launcher/url_launcher.dart'; // ★追加: URLスキーム呼び出し用
 import '../models/reservation.dart';
 import '../data/reservation_data.dart';
-import 'dart:io';
-import 'dart:convert';
-import 'package:charset_converter/charset_converter.dart';
+// ※ dart:io や charset_converter はWebでエラーになるため削除しました！
 
 class ReservationPage extends StatefulWidget {
   const ReservationPage({super.key});
@@ -22,34 +20,29 @@ class _ReservationPageState extends State<ReservationPage> {
   final List<String> slipKeyword = [
     'プレート',
     'ガラス箱',
-    // 'お祝い',  // ← 後からこうして追加できます
   ];
 
   // ★ 2. ネット予約のコメント欄を判定するための開始キーワード
   final List<String> commentPrefixes = [
     '要望・コメント：',
     '要望・相談：',
-    // 'レストランへのご要望：', // ← 別のサイト用に追加可能
   ];
 
   // ★ 3. コメント欄が「空」のときに直下に来るシステム項目のキーワード
-  // （要望・コメント：のすぐ後にこれらの言葉が来たら「コメントなし」と判定します）
   final List<String> systemNextFields = [
     '利用するVポイント：',
     'クーポン：',
     '予約更新履歴：',
     '特典：',
-    // '来店回数：', // ← 別のサイト用に追加可能
   ];
-  // ★ 4. 追加：ネット予約システム特有の目印キーワード
-  // （これらが含まれる場合は、スタッフの手打ちメモではなく「ネット予約」と判定して厳密にチェックします）
+
+  // ★ 4. ネット予約システム特有の目印キーワード
   final List<String> webSignatures = [
     '媒体名：',
     '予約番号：',
     '--- Yahoo!リザベーションマネージャー ---',
     '[国]',
     '一休',
-    // '来店回数：', // ← 必要に応じて追加可能
   ];
 
   @override
@@ -85,23 +78,19 @@ class _ReservationPageState extends State<ReservationPage> {
     }
   }
 
-  // 💡 人数とメモ（子供・小・コース人数乖離）のチェック関数
   bool _hasPeopleMismatch(Reservation r) {
     final note = r.note ?? '';
     if (note.isEmpty) return false;
 
-    // ① 子供・子ども・お子様が含まれるか
     if (note.contains('子供') || note.contains('子ども') || note.contains('お子様')) {
       return true;
     }
 
-    // ② 「小1」「小 1」「小1名」「小 2人」などの「小＋数字」パターンがあるか
     final childPattern = RegExp(r'小\s*\d+');
     if (childPattern.hasMatch(note)) {
       return true;
     }
 
-    // ③ ★【コース予約がある場合のみ判定】メモ内の数字（〇名・〇人）と予約総人数(r.people)の乖離をチェック
     if (r.course != null) {
       final regExp = RegExp(r'(\d+)\s*(?:名|人)');
       final matches = regExp.allMatches(note);
@@ -116,7 +105,6 @@ class _ReservationPageState extends State<ReservationPage> {
         }
       }
     }
-
     return false;
   }
 
@@ -145,9 +133,7 @@ class _ReservationPageState extends State<ReservationPage> {
             shortCourseName = '赤天';
           } else if (r.course!.contains('赤身天国＋クラシタ火山コース')) {
             shortCourseName = '赤k';
-          } else if (r.course!.contains('赤身天国＋刺身スペシャルnew')) {
-            shortCourseName = '赤さし';
-          } else if (r.course!.contains('赤身天国＋刺身スペシャル')) {
+          } else if (r.course!.contains('赤身天国＋刺身スペシャルnew') || r.course!.contains('赤身天国＋刺身スペシャル')) {
             shortCourseName = '赤さし';
           } else if (r.course!.contains('アニバーサリーコース')) {
             shortCourseName = 'アニバ';
@@ -155,9 +141,7 @@ class _ReservationPageState extends State<ReservationPage> {
             shortCourseName = 'ロイヤル(赤さし)';
           } else if (r.course!.contains('スペシャルコース')) {
             shortCourseName = 'スぺ';
-          } else if (r.course!.contains('みらんコース')) {
-            shortCourseName = 'みらん';
-          } else if (r.course!.contains('旧みらんコース')) {
+          } else if (r.course!.contains('みらんコース') || r.course!.contains('旧みらんコース')) {
             shortCourseName = 'みらん';
           } else {
             shortCourseName = r.course!.replaceAll('コース', '');
@@ -184,58 +168,42 @@ class _ReservationPageState extends State<ReservationPage> {
     return buffer.toString();
   }
 
-  // ★ 追加：キッチンプリンタへ直接データを送る関数
-  Future<void> _printToKitchenPrinter(BuildContext context, String printText) async {
-    // 送信中のスナックバー表示
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('プリンタへ送信中...')),
-    );
+  // ★ 変更：ショートカットアプリを経由して印刷データを送る関数
+  Future<void> _printViaShortcut(BuildContext context, String printText) async {
+    // XMLエラーを防ぐため、テキスト内の特殊文字を軽くエスケープ
+    final safeText = printText.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');
 
-    // 仕様書で確認したIPとポート
-    final String ip = '192.168.32.202'; // 動かなければ 203 に変更してください
-    final int port = 9100;
+    // ePOS-Print用のXMLフォーマットにテキストをはめ込む
+    final String xmlData = '''
+    <s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/">
+      <s:Body>
+        <epos-print xmlns="http://www.epson-pos.com/schemas/2011/03/epos-print">
+          <text lang="ja">$safeText&#10;</text>
+          <feed unit="30"/>
+          <cut type="feed"/>
+        </epos-print>
+      </s:Body>
+    </s:Envelope>
+    ''';
+
+    // URLで送れるようにエンコード
+    final encodedXml = Uri.encodeComponent(xmlData);
+
+    // ★重要: name=PrintOrder の部分は、iPadで作るショートカットの名前に合わせます
+    final url = Uri.parse('shortcuts://run-shortcut?name=PrintOrder&input=text&text=$encodedXml');
 
     try {
-      Socket socket = await Socket.connect(ip, port, timeout: const Duration(seconds: 5));
-
-      // 1. プリンタ初期化コマンド (ESC @)
-      socket.add([0x1B, 0x40]);
-
-      // 2. 文字サイズ設定（予約一覧なので少し見やすくする）
-      // 標準サイズにしたい場合はこの行をコメントアウトしてください
-      // socket.add([0x1B, 0x21, 0x00]); 
-
-      // 3. テキストデータの送信
-      // パッケージを使って Shift-JIS に変換！
-      final encodedText = await CharsetConverter.encode("Shift_JIS", printText);
-      socket.add(encodedText);
-
-      // 4. 余白のための改行（紙を少し送る）
-      socket.add(utf8.encode('\n\n\n\n\n'));
-
-      // 5. 用紙カットコマンド (GS V 0)
-      socket.add([0x1D, 0x56, 0x00]);
-
-      await socket.flush();
-      socket.destroy();
-
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('印刷が完了しました！', style: TextStyle(color: Colors.white)),
-            backgroundColor: Colors.green,
-          ),
-        );
+      if (await canLaunchUrl(url)) {
+        await launchUrl(url); // ショートカットアプリが立ち上がる
+      } else {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('エラー: ショートカットアプリを起動できません')),
+          );
+        }
       }
     } catch (e) {
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('印刷エラー: プリンタとの通信に失敗しました ($e)'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
+      debugPrint('ショートカット起動エラー: $e');
     }
   }
 
@@ -341,17 +309,17 @@ class _ReservationPageState extends State<ReservationPage> {
               onPressed: () => Navigator.pop(context), 
               child: const Text('閉じる')
             ),
-            // ★ 追加：キッチンプリンタへの直接印刷ボタン
             ElevatedButton.icon(
               style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.blueAccent,
                 foregroundColor: Colors.white,
               ),
               icon: const Icon(Icons.print),
-              label: const Text('印刷'),
+              label: const Text('印刷 (ショートカット経由)'),
               onPressed: () async {
-                Navigator.pop(context); // ダイアログを閉じる
-                await _printToKitchenPrinter(context, printText); // 印刷実行！
+                Navigator.pop(context); 
+                // ★ 変更：ショートカット呼び出し関数を実行！
+                await _printViaShortcut(context, printText); 
               },
             ),
           ],
