@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:url_launcher/url_launcher.dart'; // ★追加: URLスキーム呼び出し用
+import 'package:url_launcher/url_launcher.dart';
 import '../models/reservation.dart';
 import '../data/reservation_data.dart';
-// ※ dart:io や charset_converter はWebでエラーになるため削除しました！
+import 'package:flutter/services.dart';
 
 class ReservationPage extends StatefulWidget {
   const ReservationPage({super.key});
@@ -170,31 +170,33 @@ class _ReservationPageState extends State<ReservationPage> {
 
   // ★ 変更：ショートカットアプリを経由して印刷データを送る関数
   Future<void> _printViaShortcut(BuildContext context, String printText) async {
-    // XMLエラーを防ぐため、テキスト内の特殊文字を軽くエスケープ
-    final safeText = printText.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');
+    // 1. XMLフォーマットの作成
+    final safeText = printText
+        .replaceAll('&', '&amp;')
+        .replaceAll('<', '&lt;')
+        .replaceAll('>', '&gt;');
 
-    // ePOS-Print用のXMLフォーマットにテキストをはめ込む
     final String xmlData = '''
-    <s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/">
-      <s:Body>
-        <epos-print xmlns="http://www.epson-pos.com/schemas/2011/03/epos-print">
-          <text lang="ja">$safeText&#10;</text>
-          <feed unit="30"/>
-          <cut type="feed"/>
-        </epos-print>
-      </s:Body>
-    </s:Envelope>
-    ''';
-
-    // URLで送れるようにエンコード
-    final encodedXml = Uri.encodeComponent(xmlData);
-
-    // ★重要: name=PrintOrder の部分は、iPadで作るショートカットの名前に合わせます
-    final url = Uri.parse('shortcuts://run-shortcut?name=PrintOrder&input=text&text=$encodedXml');
+<s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/">
+  <s:Body>
+    <epos-print xmlns="http://www.epson-pos.com/schemas/2011/03/epos-print">
+      <text lang="ja">$safeText&#10;</text>
+      <feed unit="30"/>
+      <cut type="feed"/>
+    </epos-print>
+  </s:Body>
+</s:Envelope>
+''';
 
     try {
+      // 2. データをクリップボードに自動コピー！ (これで文字数制限を回避)
+      await Clipboard.setData(ClipboardData(text: xmlData));
+
+      // 3. パラメータなしのシンプルなURLでショートカットを起動
+      final url = Uri.parse('shortcuts://run-shortcut?name=PrintOrder');
+
       if (await canLaunchUrl(url)) {
-        await launchUrl(url); // ショートカットアプリが立ち上がる
+        await launchUrl(url);
       } else {
         if (context.mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -203,7 +205,12 @@ class _ReservationPageState extends State<ReservationPage> {
         }
       }
     } catch (e) {
-      debugPrint('ショートカット起動エラー: $e');
+      debugPrint('印刷エラー: $e');
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('エラーが発生しました: $e')),
+        );
+      }
     }
   }
 
