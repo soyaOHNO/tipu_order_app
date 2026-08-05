@@ -161,20 +161,16 @@ class _ReservationPageState extends State<ReservationPage> {
         if (i == 0) {
           buffer.writeln('$timeKey : $details');
         } else {
-          buffer.writeln('          : $details');
+          buffer.writeln('      : $details');
         }
       }
     }
     return buffer.toString();
   }
 
-  // ★ 変更：ショートカットアプリを経由して印刷データを送る関数
+  // ★ クリップボードを経由してショートカットを起動する関数
   Future<void> _printViaShortcut(BuildContext context, String printText) async {
-    // 1. XMLフォーマットの作成
-    final safeText = printText
-        .replaceAll('&', '&amp;')
-        .replaceAll('<', '&lt;')
-        .replaceAll('>', '&gt;');
+    final safeText = printText.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');
 
     final String xmlData = '''
 <s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/">
@@ -189,23 +185,17 @@ class _ReservationPageState extends State<ReservationPage> {
 ''';
 
     try {
-      // 2. データをクリップボードに自動コピー！ (これで文字数制限を回避)
+      // 1. ダイアログが開いている状態（ボタンを押した直後）なら、クリップボードコピーは100%成功する
       await Clipboard.setData(ClipboardData(text: xmlData));
 
-      // 3. パラメータなしのシンプルなURLでショートカットを起動
+      // 2. ショートカットアプリのURL
       final url = Uri.parse('shortcuts://run-shortcut?name=PrintOrder');
 
-      if (await canLaunchUrl(url)) {
-        await launchUrl(url);
-      } else {
-        if (context.mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('エラー: ショートカットアプリを起動できません')),
-          );
-        }
-      }
+      // 3. 事前チェック(canLaunchUrl)を無視して、外部アプリとして強制起動する！
+      await launchUrl(url, mode: LaunchMode.externalApplication);
+      
     } catch (e) {
-      debugPrint('印刷エラー: $e');
+      debugPrint('エラー: $e');
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('エラーが発生しました: $e')),
@@ -324,9 +314,13 @@ class _ReservationPageState extends State<ReservationPage> {
               icon: const Icon(Icons.print),
               label: const Text('印刷 (ショートカット経由)'),
               onPressed: () async {
-                Navigator.pop(context); 
-                // ★ 変更：ショートカット呼び出し関数を実行！
+                // ★ 修正：絶対に「ダイアログを閉じる前」に実行する！
                 await _printViaShortcut(context, printText); 
+                
+                // ★ ショートカットへの移行が終わったあとに、裏でダイアログを閉じる
+                if (context.mounted) {
+                  Navigator.pop(context); 
+                }
               },
             ),
           ],
