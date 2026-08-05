@@ -3,6 +3,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../models/reservation.dart';
 import '../data/reservation_data.dart';
 import 'package:flutter/services.dart';
+import 'dart:async'; // ★ タイムアウト処理のために追加
 
 class ReservationPage extends StatefulWidget {
   const ReservationPage({super.key});
@@ -16,19 +17,16 @@ class _ReservationPageState extends State<ReservationPage> {
   bool isLoading = true;
   DateTime selectedDate = DateTime.now().add(const Duration(days: 1));
 
-  // ★ 1. 伝票出力用のアラートキーワード（うっすらオレンジになる）
   final List<String> slipKeyword = [
     'プレート',
     'ガラス箱',
   ];
 
-  // ★ 2. ネット予約のコメント欄を判定するための開始キーワード
   final List<String> commentPrefixes = [
     '要望・コメント：',
     '要望・相談：',
   ];
 
-  // ★ 3. コメント欄が「空」のときに直下に来るシステム項目のキーワード
   final List<String> systemNextFields = [
     '利用するVポイント：',
     'クーポン：',
@@ -36,7 +34,6 @@ class _ReservationPageState extends State<ReservationPage> {
     '特典：',
   ];
 
-  // ★ 4. ネット予約システム特有の目印キーワード
   final List<String> webSignatures = [
     '媒体名：',
     '予約番号：',
@@ -161,17 +158,30 @@ class _ReservationPageState extends State<ReservationPage> {
         if (i == 0) {
           buffer.writeln('$timeKey : $details');
         } else {
-          buffer.writeln('      : $details');
+          buffer.writeln('          : $details');
         }
       }
     }
     return buffer.toString();
   }
 
-  // ★ クリップボードを経由してショートカットを起動する関数
-  Future<void> _printViaShortcut(BuildContext context, String printText) async {
-    final safeText = printText.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');
+  // ★ 追加：デバッグメッセージを画面に出す専用の関数
+  void _showDebugSnackBar(BuildContext context, String message, {bool isError = false}) {
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message, style: const TextStyle(fontWeight: FontWeight.bold)),
+        backgroundColor: isError ? Colors.red : Colors.green.shade700,
+        duration: const Duration(seconds: 4), // 読みやすいように長めに表示
+      ),
+    );
+  }
 
+  // ★ デバッグ強化版：ショートカット起動処理
+  Future<void> _printViaShortcut(BuildContext context, String printText) async {
+    _showDebugSnackBar(context, '【Step 1】XMLデータ作成中...');
+    
+    final safeText = printText.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');
     final String xmlData = '''
 <s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/">
   <s:Body>
@@ -185,26 +195,43 @@ class _ReservationPageState extends State<ReservationPage> {
 ''';
 
     try {
-      // 1. ダイアログが開いている状態（ボタンを押した直後）なら、クリップボードコピーは100%成功する
-      await Clipboard.setData(ClipboardData(text: xmlData));
+      _showDebugSnackBar(context, '【Step 2】クリップボードへコピーを実行します');
+      
+      // 無言でフリーズした場合に備えて、2秒でタイムアウトさせる
+      await Clipboard.setData(ClipboardData(text: xmlData)).timeout(
+        const Duration(seconds: 2),
+        onTimeout: () {
+          throw Exception('Timeout: クリップボード処理がフリーズしました。Safariの仕様によるブロックです。');
+        },
+      );
+      
+      _showDebugSnackBar(context, '【Step 3】コピー成功！ショートカット起動へ進みます');
 
-      // 2. ショートカットアプリのURL
       final url = Uri.parse('shortcuts://run-shortcut?name=PrintOrder');
 
-      // 3. 事前チェック(canLaunchUrl)を無視して、外部アプリとして強制起動する！
-      await launchUrl(url, mode: LaunchMode.externalApplication);
+      _showDebugSnackBar(context, '【Step 4】launchUrl($url) を実行します');
       
-    } catch (e) {
-      debugPrint('エラー: $e');
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('エラーが発生しました: $e')),
-        );
+      // こちらも3秒でタイムアウト設定
+      bool launched = await launchUrl(url, mode: LaunchMode.externalApplication).timeout(
+        const Duration(seconds: 3),
+        onTimeout: () {
+          throw Exception('Timeout: launchUrl処理がフリーズしました。');
+        },
+      );
+      
+      if (launched) {
+         _showDebugSnackBar(context, '【Step 5】launchUrl成功 (戻り値: true)');
+      } else {
+         _showDebugSnackBar(context, '【Step 5】launchUrl失敗 (戻り値: false) - ブラウザが起動を拒否しました', isError: true);
       }
+      
+    } catch (e, stackTrace) {
+      debugPrint('🚨 印刷エラー詳細: $e\n$stackTrace');
+      _showDebugSnackBar(context, '🚨 エラー: $e', isError: true);
     }
   }
 
-  Future<void> _handlePrintAction(BuildContext context) async {
+  void _handlePrintAction(BuildContext context) async {
     final printText = _generatePrintFormat();
     if (!context.mounted) return;
     _showPrintPreview(context, printText);
@@ -314,13 +341,8 @@ class _ReservationPageState extends State<ReservationPage> {
               icon: const Icon(Icons.print),
               label: const Text('印刷 (ショートカット経由)'),
               onPressed: () async {
-                // ★ 修正：絶対に「ダイアログを閉じる前」に実行する！
+                // ★ 変更: 原因を特定するため、ダイアログを閉じずに処理を見届ける
                 await _printViaShortcut(context, printText); 
-                
-                // ★ ショートカットへの移行が終わったあとに、裏でダイアログを閉じる
-                if (context.mounted) {
-                  Navigator.pop(context); 
-                }
               },
             ),
           ],
