@@ -144,7 +144,7 @@ class _TopMenuPageState extends State<TopMenuPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('みらんちぷ発注管理'),
+        title: const Text('ちぷ発注管理'),
         centerTitle: true,
       ),
       body: Padding(
