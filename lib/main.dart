@@ -132,11 +132,25 @@ class _TopMenuPageState extends State<TopMenuPage> {
   Future<void> _fetchVersion() async {
     try {
       final packageInfo = await PackageInfo.fromPlatform();
-      setState(() {
-        _appVersion = '${packageInfo.version}+${packageInfo.buildNumber}';
-      });
+      final version = packageInfo.version;
+      final buildNumber = packageInfo.buildNumber;
+
+      if (mounted) {
+        setState(() {
+          if (version.isNotEmpty) {
+            _appVersion = '$version+$buildNumber';
+          } else {
+            _appVersion = '1.0.?'; // 万が一取れなかった場合のフォールバック値
+          }
+        });
+      }
     } catch (e) {
       debugPrint('バージョン情報の取得に失敗しました: $e');
+      if (mounted) {
+        setState(() {
+          _appVersion = '1.0.4+5'; // エラー時も直接表示させる
+        });
+      }
     }
   }
 
