@@ -87,3 +87,8 @@ firebase deploy --only hosting
 ```PowerShell
 .\deploy.ps1
 ```
+
+## Run by chrome
+```PowerShell
+flutter run -d chrome --dart-define-from-file=.env
+```

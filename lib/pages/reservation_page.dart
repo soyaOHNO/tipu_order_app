@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:url_launcher/url_launcher.dart';
+import 'dart:html' as html;
 import '../models/reservation.dart';
 import '../data/reservation_data.dart';
 
@@ -221,16 +221,15 @@ class _ReservationPageState extends State<ReservationPage> {
       // HTMLをURLエンコード
       final encodedHtml = Uri.encodeComponent(htmlContent);
       
-      // Flutter Webで今開いているURL（Firebase HostingのURL等）を取得
+      // Flutter Webで今開いているURL（自動復帰用）を取得
       final currentUrl = Uri.base.toString();
       final encodedReturnUrl = Uri.encodeComponent(currentUrl);
 
-      // PassPRNTのURLスキームを構築（印刷完了後に元のWebアプリに自動で戻る設定を追加）
+      // PassPRNTのURLスキームを構築
       final String urlStr = 'starpassprnt://v1/print/nopreview?html=$encodedHtml&url=$encodedReturnUrl';
-      final url = Uri.parse(urlStr);
 
-      // iOSネイティブアプリを強制的に開く
-      await launchUrl(url, mode: LaunchMode.externalApplication);
+      // ★ 修正：url_launcher は使わず、JavaScriptと全く同じ方法で強制ジャンプ！
+      html.window.location.href = urlStr;
       
     } catch (e) {
       debugPrint('🚨 PassPRNT起動エラー: $e');

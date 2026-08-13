@@ -1,8 +1,10 @@
+// flutter run -d chrome --dart-define-from-file=.env
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'firebase_options.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 
 import 'pages/order_home_page.dart';
 import 'data/item_data.dart';
@@ -30,14 +32,11 @@ void main() async {
   
   FirebaseFirestore.instance.settings = const Settings(persistenceEnabled: true);
   
-  // ❌ ここにあった await load... は消す！
-  // ⭕️ 通信を待たずに、即座にアプリを起動して画面を出す！
   runApp(const MyApp());
 }
 
 // -----------------------------------------------------
-// ★ TipuOrderApp の中身（もしくはホーム画面の初期化処理）を
-// 以下の「Splash画面（ローディング画面）」を経由するように変更します。
+// ★ スプラッシュ画面（ローディング画面）
 // -----------------------------------------------------
 
 class SplashScreen extends StatefulWidget {
@@ -62,11 +61,11 @@ class _SplashScreenState extends State<SplashScreen> {
       await loadDishes();
       await loadCourseRecipes();
       
-      // 読み込みが終わったら、本来のトップ画面（TopMenuPageなど）に遷移する
+      // 読み込みが終わったら、本来のトップ画面（TopMenuPage）に遷移する
       if (mounted) {
         Navigator.pushReplacement(
           context,
-          MaterialPageRoute(builder: (_) => const TopMenuPage()), // ← アプリのトップ画面に置き換えてください
+          MaterialPageRoute(builder: (_) => const TopMenuPage()),
         );
       }
     } catch (e) {
@@ -76,7 +75,6 @@ class _SplashScreenState extends State<SplashScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // ユーザーにはすぐにこの「くるくる」画面が表示されるのでストレスが減る
     return const Scaffold(
       backgroundColor: Colors.indigo,
       body: Center(
@@ -110,8 +108,37 @@ class MyApp extends StatelessWidget {
   }
 }
 
-class TopMenuPage extends StatelessWidget {
+// -----------------------------------------------------
+// ★ トップメニュー画面（StatefulWidgetに変更し、バージョン取得を追加）
+// -----------------------------------------------------
+
+class TopMenuPage extends StatefulWidget {
   const TopMenuPage({super.key});
+
+  @override
+  State<TopMenuPage> createState() => _TopMenuPageState();
+}
+
+class _TopMenuPageState extends State<TopMenuPage> {
+  String _appVersion = '';
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchVersion();
+  }
+
+  // package_info_plus から現在のバージョン（例: 1.0.4+5）を取得
+  Future<void> _fetchVersion() async {
+    try {
+      final packageInfo = await PackageInfo.fromPlatform();
+      setState(() {
+        _appVersion = '${packageInfo.version}+${packageInfo.buildNumber}';
+      });
+    } catch (e) {
+      debugPrint('バージョン情報の取得に失敗しました: $e');
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -127,7 +154,7 @@ class TopMenuPage extends StatelessWidget {
           crossAxisSpacing: 16,      
           mainAxisSpacing: 16,       
           children: [
-            // 1. 発注管理（そのままオレンジ）
+            // 1. 発注管理（キッチン発注）
             MenuButton(
               title: 'キッチン発注',
               icon: Icons.assignment,
@@ -140,7 +167,7 @@ class TopMenuPage extends StatelessWidget {
               },
             ),
 
-            // 2. ホール発注（紫）
+            // 2. ホール発注
             MenuButton(
               title: 'ホール発注',
               icon: Icons.assignment,
@@ -153,7 +180,7 @@ class TopMenuPage extends StatelessWidget {
               },
             ),
 
-            // 3. 予約状況（そのままブルー）
+            // 3. 予約状況
             MenuButton(
               title: '予約確認',
               icon: Icons.book_online,
@@ -166,7 +193,7 @@ class TopMenuPage extends StatelessWidget {
               },
             ),
             
-            // 4. 発注品マスタ編集（マスタ系：爽やかな明るい薄緑「shade600」）
+            // 4. キッチン発注品マスタ編集
             MenuButton(
               title: 'キッチン発注品マスタ編集',
               icon: Icons.edit_note,
@@ -179,10 +206,10 @@ class TopMenuPage extends StatelessWidget {
               },
             ),
 
-            // 5. ホール商品マスタ編集（★新規追加：ホールを意識したブルーグリーン）
+            // 5. ホール商品マスタ編集
             MenuButton(
               title: 'ホール商品マスタ編集',
-              icon: Icons.liquor, // ドリンクをイメージするアイコン
+              icon: Icons.liquor,
               color: Colors.teal.shade400, 
               onTap: () {
                 Navigator.push(
@@ -192,7 +219,7 @@ class TopMenuPage extends StatelessWidget {
               },
             ),
 
-            // 6. 料理マスタ編集（マスタ系：標準的な中間の黄緑「shade500」）
+            // 6. 料理マスタ編集
             MenuButton(
               title: '料理マスタ編集',
               icon: Icons.lunch_dining,
@@ -205,7 +232,7 @@ class TopMenuPage extends StatelessWidget {
               },
             ),
 
-            // 7. コースレシピ編集（マスタ系：少し深い落ち着いた緑「shade400」）
+            // 7. コースレシピ編集
             MenuButton(
               title: 'コースレシピ編集',
               icon: Icons.restaurant_menu,
@@ -218,6 +245,20 @@ class TopMenuPage extends StatelessWidget {
               },
             ),
           ],
+        ),
+      ),
+      bottomNavigationBar: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.only(right: 16.0, bottom: 8.0),
+          child: Text(
+            _appVersion.isNotEmpty ? 'ver $_appVersion' : '',
+            textAlign: TextAlign.end,
+            style: const TextStyle(
+              fontSize: 12,
+              color: Colors.grey,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
         ),
       ),
     );
