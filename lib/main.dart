@@ -18,6 +18,7 @@ import 'pages/hall_order_page.dart';
 import 'data/hall_item_data.dart';
 import 'pages/hall_master_edit_page.dart';
 import 'utils/version_check.dart';
+import 'config/app_config.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -112,53 +113,14 @@ class MyApp extends StatelessWidget {
 // ★ トップメニュー画面（StatefulWidgetに変更し、バージョン取得を追加）
 // -----------------------------------------------------
 
-class TopMenuPage extends StatefulWidget {
+class TopMenuPage extends StatelessWidget {
   const TopMenuPage({super.key});
-
-  @override
-  State<TopMenuPage> createState() => _TopMenuPageState();
-}
-
-class _TopMenuPageState extends State<TopMenuPage> {
-  String _appVersion = '';
-
-  @override
-  void initState() {
-    super.initState();
-    _fetchVersion();
-  }
-
-  // package_info_plus から現在のバージョン（例: 1.0.4+5）を取得
-  Future<void> _fetchVersion() async {
-    try {
-      final packageInfo = await PackageInfo.fromPlatform();
-      final version = packageInfo.version;
-      final buildNumber = packageInfo.buildNumber;
-
-      if (mounted) {
-        setState(() {
-          if (version.isNotEmpty) {
-            _appVersion = '$version+$buildNumber';
-          } else {
-            _appVersion = '1.0.?'; // 万が一取れなかった場合のフォールバック値
-          }
-        });
-      }
-    } catch (e) {
-      debugPrint('バージョン情報の取得に失敗しました: $e');
-      if (mounted) {
-        setState(() {
-          _appVersion = '1.0.4+5'; // エラー時も直接表示させる
-        });
-      }
-    }
-  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('ちぷ発注管理'),
+        title: const Text('みらんちぷ発注管理'),
         centerTitle: true,
       ),
       body: Padding(
@@ -261,11 +223,12 @@ class _TopMenuPageState extends State<TopMenuPage> {
           ],
         ),
       ),
+      // ★ フッターのバージョン表示を定数から一発で取得！
       bottomNavigationBar: SafeArea(
         child: Padding(
           padding: const EdgeInsets.only(right: 16.0, bottom: 8.0),
           child: Text(
-            _appVersion.isNotEmpty ? 'ver $_appVersion' : '',
+            'ver ${AppConfig.version}', // ★ここで直接呼び出すだけ！
             textAlign: TextAlign.end,
             style: const TextStyle(
               fontSize: 12,

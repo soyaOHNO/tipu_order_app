@@ -30,6 +30,21 @@ if ($content -match '(?m)^version:\s*([0-9]+)\.([0-9]+)\.([0-9]+)(?:\+([0-9]+))?
     Write-Host "📦 バージョンを自動更新しました: [ $oldVersionLine ] -> [ $newVersionLine ]" -ForegroundColor Green
     
     $version = $newVersion
+
+    
+    # =========================================================
+    # ★追加（1.5）: Dart用バージョンファイルを自動生成する
+    # =========================================================
+    Write-Host "`n📝 Dart用バージョンファイルを生成しています..." -ForegroundColor Yellow
+    $configDir = ".\lib\config"
+    if (-Not (Test-Path $configDir)) { New-Item -ItemType Directory -Force -Path $configDir | Out-Null }
+    
+    $dartVersionFile = "$configDir\app_config.dart"
+    $dartContent = "class AppConfig {`n  static const String version = '$newVersion';`n}"
+    
+    [System.IO.File]::WriteAllText($dartVersionFile, $dartContent, $utf8NoBom)
+    Write-Host "✅ app_config.dart を生成しました。" -ForegroundColor Green
+    # =========================================================
 } else {
     Write-Host "❌ pubspec.yaml からバージョンを取得できませんでした。" -ForegroundColor Red
     exit

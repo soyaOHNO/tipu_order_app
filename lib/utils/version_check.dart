@@ -1,13 +1,14 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
-import 'package:package_info_plus/package_info_plus.dart';
 import 'dart:html' as html;
+
+// ★ package_info_plus は使わず、PowerShellが作ったファイルを読み込む！
+import '../config/app_config.dart'; 
 
 Future<void> checkAppVersionAndReload() async {
   try {
-    // ★ pubspec.yaml に書かれているバージョンを自動取得！
-    final packageInfo = await PackageInfo.fromPlatform();
-    final currentAppVersion = '${packageInfo.version}+${packageInfo.buildNumber}';
+    // ★ 物理的に埋め込まれた文字を読むだけなので、エラーになる確率0%！
+    final currentAppVersion = AppConfig.version; 
 
     // Firestoreから最新バージョンを取得
     final doc = await FirebaseFirestore.instance.collection('app_info').doc('version').get();
