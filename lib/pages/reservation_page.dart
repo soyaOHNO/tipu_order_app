@@ -1,9 +1,7 @@
 import 'package:flutter/material.dart';
-import 'dart:html' as html;
+import 'package:url_launcher/url_launcher.dart';
 import '../models/reservation.dart';
 import '../data/reservation_data.dart';
-import 'package:flutter/services.dart';
-import 'dart:async'; // ★ タイムアウト処理のために追加
 
 class ReservationPage extends StatefulWidget {
   const ReservationPage({super.key});
@@ -105,14 +103,15 @@ class _ReservationPageState extends State<ReservationPage> {
     return false;
   }
 
+  // =========================================================================
+  // 1. プレビュー用の「テキスト版」フォーマット生成
+  // =========================================================================
   String _generatePrintFormat() {
     final Map<String, List<Reservation>> grouped = {};
     for (final r in reservations) {
       grouped.putIfAbsent(r.startTime, () => []).add(r);
     }
-
-    final sortedKeys = grouped.keys.toList();
-    sortedKeys.sort();
+    final sortedKeys = grouped.keys.toList()..sort();
 
     final buffer = StringBuffer();
     buffer.writeln('【${selectedDate.month}/${selectedDate.day} の予約一覧】\n');
@@ -123,26 +122,17 @@ class _ReservationPageState extends State<ReservationPage> {
         final r = resList[i];
         
         String details = '${r.people}名';
-        
         if (r.course != null) {
           String shortCourseName;
-          if (r.course!.contains('赤身天国コース')) {
-            shortCourseName = '赤天';
-          } else if (r.course!.contains('赤身天国＋クラシタ火山コース')) {
-            shortCourseName = '赤k';
-          } else if (r.course!.contains('赤身天国＋刺身スペシャルnew') || r.course!.contains('赤身天国＋刺身スペシャル')) {
-            shortCourseName = '赤さし';
-          } else if (r.course!.contains('アニバーサリーコース')) {
-            shortCourseName = 'アニバ';
-          } else if (r.course!.contains('ロイヤルコース')) {
-            shortCourseName = 'ロイヤル(赤さし)';
-          } else if (r.course!.contains('スペシャルコース')) {
-            shortCourseName = 'スぺ';
-          } else if (r.course!.contains('みらんコース') || r.course!.contains('旧みらんコース')) {
-            shortCourseName = 'みらん';
-          } else {
-            shortCourseName = r.course!.replaceAll('コース', '');
-          } 
+          if (r.course!.contains('赤身天国コース')) shortCourseName = '赤天';
+          else if (r.course!.contains('赤身天国＋クラシタ火山コース')) shortCourseName = '赤k';
+          else if (r.course!.contains('赤身天国＋刺身スペシャルnew') || r.course!.contains('赤身天国＋刺身スペシャル')) shortCourseName = '赤さし';
+          else if (r.course!.contains('アニバーサリーコース')) shortCourseName = 'アニバ';
+          else if (r.course!.contains('ロイヤルコース')) shortCourseName = 'ロイヤル(赤さし)';
+          else if (r.course!.contains('スペシャルコース')) shortCourseName = 'スぺ';
+          else if (r.course!.contains('みらんコース') || r.course!.contains('旧みらんコース')) shortCourseName = 'みらん';
+          else shortCourseName = r.course!.replaceAll('コース', '');
+          
           details += '×$shortCourseName'; 
         }
 
@@ -155,74 +145,114 @@ class _ReservationPageState extends State<ReservationPage> {
             }
           }
         }
-        if (i == 0) {
-          buffer.writeln('$timeKey : $details');
-        } else {
-          buffer.writeln('          : $details');
-        }
+        if (i == 0) buffer.writeln('$timeKey : $details');
+        else buffer.writeln('          : $details');
       }
     }
     return buffer.toString();
   }
 
-  // ★ 追加：デバッグメッセージを画面に出す専用の関数
-  void _showDebugSnackBar(BuildContext context, String message, {bool isError = false}) {
-    if (!context.mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message, style: const TextStyle(fontWeight: FontWeight.bold)),
-        backgroundColor: isError ? Colors.red : Colors.green.shade700,
-        duration: const Duration(seconds: 4), // 読みやすいように長めに表示
-      ),
-    );
+  // =========================================================================
+  // 2. Star PassPRNT用の「HTML版」フォーマット生成（レシートレイアウト）
+  // =========================================================================
+  String _generatePrintHtml() {
+    final Map<String, List<Reservation>> grouped = {};
+    for (final r in reservations) {
+      grouped.putIfAbsent(r.startTime, () => []).add(r);
+    }
+    final sortedKeys = grouped.keys.toList()..sort();
+
+    final buffer = StringBuffer();
+    buffer.writeln('<div style="font-family: sans-serif; width: 100%; color: #000; font-size: 1.4em; line-height: 1.3;">');
+    buffer.writeln('<h2 style="text-align: center; border-bottom: 2px solid #000; padding-bottom: 8px; margin-bottom: 12px;">${selectedDate.month}/${selectedDate.day} 予約</h2>');
+    buffer.writeln('<table style="width: 100%; border-collapse: collapse;">');
+
+    for (final timeKey in sortedKeys) {
+      final resList = grouped[timeKey]!;
+      for (int i = 0; i < resList.length; i++) {
+        final r = resList[i];
+        
+        String details = '${r.people}名';
+        if (r.course != null) {
+          String shortCourseName;
+          if (r.course!.contains('赤身天国コース')) shortCourseName = '赤天';
+          else if (r.course!.contains('赤身天国＋クラシタ火山コース')) shortCourseName = '赤k';
+          else if (r.course!.contains('赤身天国＋刺身スペシャルnew') || r.course!.contains('赤身天国＋刺身スペシャル')) shortCourseName = '赤さし';
+          else if (r.course!.contains('アニバーサリーコース')) shortCourseName = 'アニバ';
+          else if (r.course!.contains('ロイヤルコース')) shortCourseName = 'ロイヤル(赤さし)';
+          else if (r.course!.contains('スペシャルコース')) shortCourseName = 'スぺ';
+          else if (r.course!.contains('みらんコース') || r.course!.contains('旧みらんコース')) shortCourseName = 'みらん';
+          else shortCourseName = r.course!.replaceAll('コース', '');
+          
+          details += '<br>×$shortCourseName'; 
+        }
+
+        if (r.note != null && r.note!.isNotEmpty) {
+          for (final keyword in slipKeyword) {
+            if (r.note!.contains(keyword)) {
+              String displayKeyword = keyword == 'ガラス箱' ? 'プレート' : keyword;
+              details += '<br><span style="font-weight: bold; border: 1px solid #000; padding: 2px 4px;">$displayKeyword</span>';
+              break;
+            }
+          }
+        }
+        
+        buffer.writeln('<tr style="border-bottom: 1px dashed #666;">');
+        if (i == 0) {
+          buffer.writeln('<td style="vertical-align: top; padding: 8px 0; font-weight: bold; width: 30%;">[ $timeKey ]</td>');
+        } else {
+          buffer.writeln('<td style="vertical-align: top; padding: 8px 0; width: 30%;"></td>');
+        }
+        buffer.writeln('<td style="vertical-align: top; padding: 8px 0; text-align: left;">$details</td>');
+        buffer.writeln('</tr>');
+      }
+    }
+    buffer.writeln('</table>');
+    buffer.writeln('</div>');
+    
+    return buffer.toString();
   }
 
-  // ★ デバッグ強化版：ショートカット起動処理
-  Future<void> _printViaShortcut(BuildContext context, String printText) async {
-    _showDebugSnackBar(context, '【Step 1】XMLデータ作成中...');
-    
-    final safeText = printText.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');
-    final String xmlData = '''
-<s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/">
-  <s:Body>
-    <epos-print xmlns="http://www.epson-pos.com/schemas/2011/03/epos-print">
-      <text lang="ja">$safeText&#10;</text>
-      <feed unit="30"/>
-      <cut type="feed"/>
-    </epos-print>
-  </s:Body>
-</s:Envelope>
-''';
-
+  // =========================================================================
+  // 3. Star PassPRNT（iOSアプリ）を起動する関数
+  // =========================================================================
+  Future<void> _printViaPassPRNT(BuildContext context, String htmlContent) async {
     try {
-      _showDebugSnackBar(context, '【Step 2】クリップボードへコピーを実行します');
+      // HTMLをURLエンコード
+      final encodedHtml = Uri.encodeComponent(htmlContent);
       
-      await Clipboard.setData(ClipboardData(text: xmlData)).timeout(
-        const Duration(seconds: 2),
-        onTimeout: () {
-          throw Exception('Timeout: クリップボード処理がフリーズしました。Safariのブロックです。');
-        },
-      );
-      
-      _showDebugSnackBar(context, '【Step 3】コピー成功！ショートカットを起動します');
+      // Flutter Webで今開いているURL（Firebase HostingのURL等）を取得
+      final currentUrl = Uri.base.toString();
+      final encodedReturnUrl = Uri.encodeComponent(currentUrl);
 
-      // ★ 修正：url_launcher を使わず、Web標準機能で強制的にジャンプする！
-      html.window.location.href = 'shortcuts://run-shortcut?name=PrintOrder';
+      // PassPRNTのURLスキームを構築（印刷完了後に元のWebアプリに自動で戻る設定を追加）
+      final String urlStr = 'starpassprnt://v1/print/nopreview?html=$encodedHtml&url=$encodedReturnUrl';
+      final url = Uri.parse(urlStr);
+
+      // iOSネイティブアプリを強制的に開く
+      await launchUrl(url, mode: LaunchMode.externalApplication);
       
-      _showDebugSnackBar(context, '【Step 4】ショートカットアプリへ移行しました');
-      
-    } catch (e, stackTrace) {
-      debugPrint('🚨 印刷エラー詳細: $e\n$stackTrace');
-      _showDebugSnackBar(context, '🚨 エラー: $e', isError: true);
+    } catch (e) {
+      debugPrint('🚨 PassPRNT起動エラー: $e');
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('印刷アプリを起動できませんでした: $e')),
+        );
+      }
     }
   }
 
   void _handlePrintAction(BuildContext context) async {
-    final printText = _generatePrintFormat();
+    // 画面に表示するプレビュー用テキスト
+    final previewText = _generatePrintFormat();
+    // 実際にプリンターに送るHTML
+    final printHtml = _generatePrintHtml();
+    
     if (!context.mounted) return;
-    _showPrintPreview(context, printText);
+    _showPrintPreview(context, previewText, printHtml);
   }
 
+  // 省略: _showReservationDetails (変更なし)
   void _showReservationDetails(BuildContext context, Reservation r, String tableId) {
     final bool isMismatch = _hasPeopleMismatch(r);
 
@@ -297,19 +327,19 @@ class _ReservationPageState extends State<ReservationPage> {
     );
   }
 
-  void _showPrintPreview(BuildContext context, String printText) {
+  void _showPrintPreview(BuildContext context, String previewText, String printHtml) {
     showDialog(
       context: context,
       builder: (context) {
         return AlertDialog(
-          title: const Text('伝票出力用フォーマット'),
+          title: const Text('伝票出力プレビュー'),
           content: Container(
             width: double.maxFinite,
             padding: const EdgeInsets.all(16),
             color: Colors.grey.shade100,
             child: SingleChildScrollView(
               child: SelectableText(
-                printText,
+                previewText, // 画面上では今までの見やすいテキストを表示
                 style: const TextStyle(fontFamily: 'monospace', fontSize: 18, height: 1.5),
               ),
             ),
@@ -325,10 +355,12 @@ class _ReservationPageState extends State<ReservationPage> {
                 foregroundColor: Colors.white,
               ),
               icon: const Icon(Icons.print),
-              label: const Text('印刷 (ショートカット経由)'),
+              label: const Text('レジプリンターで印刷 (PassPRNT)'),
               onPressed: () async {
-                // ★ 変更: 原因を特定するため、ダイアログを閉じずに処理を見届ける
-                await _printViaShortcut(context, printText); 
+                // プレビューのダイアログを閉じる
+                Navigator.pop(context); 
+                // 裏で作っておいたHTMLデータをiOSアプリに渡して起動！
+                await _printViaPassPRNT(context, printHtml); 
               },
             ),
           ],
