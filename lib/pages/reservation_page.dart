@@ -241,14 +241,45 @@ class _ReservationPageState extends State<ReservationPage> {
     }
   }
 
-  void _handlePrintAction(BuildContext context) async {
-    // 画面に表示するプレビュー用テキスト
-    final previewText = _generatePrintFormat();
-    // 実際にプリンターに送るHTML
-    final printHtml = _generatePrintHtml();
+  // ==========================================
+  // 🖨️ PassPRNT（iOSアプリ）を起動して印刷する関数
+  // ==========================================
+  Future<void> _handlePrintAction(BuildContext context) async {
+    final printText = _generatePrintFormat();
     
-    if (!context.mounted) return;
-    _showPrintPreview(context, previewText, printHtml);
+    // ★現場で文字サイズを変える時はここをいじる
+    final String fontSize = "35px"; 
+    
+    // 💡 word-wrap: break-word; を追加して、長い文字も紙の端で自動改行！
+    final String htmlContent = '''
+      <!DOCTYPE html>
+      <html>
+        <head><meta charset="utf-8"></head>
+        <body style="font-size: $fontSize; font-family: sans-serif; font-weight: bold; color: black; word-wrap: break-word;">
+          ${printText.replaceAll('\n', '<br>')}
+        </body>
+      </html>
+    ''';
+
+    try {
+      final encodedHtml = Uri.encodeComponent(htmlContent);
+      
+      // ★帰り道（コールバック）の設定
+      final currentUrl = html.window.location.href; 
+      final encodedReturnUrl = Uri.encodeComponent(currentUrl);
+
+      final String urlStr = 'starpassprnt://v1/print/nopreview?html=$encodedHtml&back=$encodedReturnUrl';
+
+      html.window.location.href = urlStr;
+      
+    } catch (e) {
+      debugPrint('🚨 印刷エラー: $e');
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('印刷アプリの起動に失敗しました: $e')),
+        );
+      }
+    }
   }
 
   // 省略: _showReservationDetails (変更なし)
