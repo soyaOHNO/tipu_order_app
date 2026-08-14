@@ -242,15 +242,14 @@ class _ReservationPageState extends State<ReservationPage> {
   }
 
   // ==========================================
-  // 🖨️ PassPRNT（iOSアプリ）を起動して印刷する関数
+  // 🖨️ PassPRNT（iOSアプリ）を起動して印刷する関数 (コールバック無し版)
   // ==========================================
   Future<void> _handlePrintAction(BuildContext context) async {
     final printText = _generatePrintFormat();
     
-    // ★現場で文字サイズを変える時はここをいじる
+    // ★現場で文字サイズを変える時はここを調整
     final String fontSize = "35px"; 
     
-    // 💡 word-wrap: break-word; を追加して、長い文字も紙の端で自動改行！
     final String htmlContent = '''
       <!DOCTYPE html>
       <html>
@@ -263,13 +262,13 @@ class _ReservationPageState extends State<ReservationPage> {
 
     try {
       final encodedHtml = Uri.encodeComponent(htmlContent);
-      
-      // ★帰り道（コールバック）の設定
-      final currentUrl = html.window.location.href; 
-      final encodedReturnUrl = Uri.encodeComponent(currentUrl);
 
-      final String urlStr = 'starpassprnt://v1/print/nopreview?html=$encodedHtml&back=$encodedReturnUrl';
+      // ★ 【修正】 url= のコールバックを完全に削除！
+      // nopreview を preview に変えておくと、iPad側で印刷前に確認画面が出ます。
+      // プレビュー不要で即印刷したい場合は nopreview のままでOKです。
+      final String urlStr = 'starpassprnt://v1/print/nopreview?html=$encodedHtml';
 
+      // PassPRNTを呼び出し
       html.window.location.href = urlStr;
       
     } catch (e) {
