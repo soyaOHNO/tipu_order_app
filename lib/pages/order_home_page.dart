@@ -4,6 +4,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 
 import '../data/item_data.dart';
 import '../models/order_item.dart';
+import '../models/reservation.dart';
 import 'board_page.dart';
 import 'chief_page.dart';
 import 'previous_order_page.dart';
@@ -87,97 +88,121 @@ class _OrderHomePageState extends State<OrderHomePage> with WidgetsBindingObserv
   }
 
   Future<void> _calculateReservedItems() async {
-    // 翌日の日付を取得（営業日ロジックのgetBusinessDateと合わせることも可能ですが、明日の予約なので単純に1日足します）
-    final tomorrow = DateTime.now().add(const Duration(days: 1));
-    final dateString = '${tomorrow.year}-${tomorrow.month.toString().padLeft(2, '0')}-${tomorrow.day.toString().padLeft(2, '0')}';
-    
-    final todayReservations = await fetchTodayReservations(dateString);
-    final Map<int, double> rawCounts = {};
+    try {
+      List<Reservation> targetReservations = [];
 
-    for (final res in todayReservations) {
-      // ★ コースがnull（席のみ予約）の場合は計算をスキップ
-      if (res.course == null) continue;
-
-      // ★ Python APIが正規化してくれたコース名と、マスタのコース名を「完全一致」で探す
-      final courseIdx = courseRecipes.indexWhere((c) => c.alive && c.courseName == res.course);
-      
-      if (courseIdx == -1) continue; 
-      final course = courseRecipes[courseIdx];
-
-      // APIからのデータは基本的に1予約=1テーブルとして処理
-      int tCount = 1; 
-      int basePeople = res.people ~/ tCount;
-      int remainder = res.people % tCount;
-
-      List<int> tables = List.generate(tCount, (index) => basePeople);
-      for (int i = 0; i < remainder; i++) {
-        tables[i] += 1;
+      // ★ 新ロジック: 日曜日の場合は、火曜日(2日後)と水曜日(3日後)の予約を合算して取得する
+      if (isSundayBusinessDay()) {
+        final tuesday = DateTime.now().add(const Duration(days: 2));
+        final wednesday = DateTime.now().add(const Duration(days: 3));
+        
+        final tueString = '${tuesday.year}-${tuesday.month.toString().padLeft(2, '0')}-${tuesday.day.toString().padLeft(2, '0')}';
+        final wedString = '${wednesday.year}-${wednesday.month.toString().padLeft(2, '0')}-${wednesday.day.toString().padLeft(2, '0')}';
+        
+        final tueRes = await fetchTodayReservations(tueString);
+        final wedRes = await fetchTodayReservations(wedString);
+        
+        targetReservations.addAll(tueRes);
+        targetReservations.addAll(wedRes);
+      } else {
+        // 通常は翌日の予約を取得
+        final tomorrow = DateTime.now().add(const Duration(days: 1));
+        final dateString = '${tomorrow.year}-${tomorrow.month.toString().padLeft(2, '0')}-${tomorrow.day.toString().padLeft(2, '0')}';
+        targetReservations = await fetchTodayReservations(dateString);
       }
 
-      for (final dishId in course.dishIds) {
-        final dishIdx = dishes.indexWhere((d) => d.id == dishId && d.alive);
-        if (dishIdx == -1) continue;
-        final dish = dishes[dishIdx];
+      final Map<int, double> rawCounts = {};
 
-        for (final p in tables) {
-          dish.requiredItems.forEach((itemId, req) {
-            final isItemAlive = items.any((i) => i.id == itemId && i.alive);
-            if (!isItemAlive) return;
+      for (final res in targetReservations) {
+        // コースがnull（席のみ予約）の場合は計算をスキップ
+        if (res.course == null) continue;
 
-            double finalAmountForThisTable = 0.0;
+        // Python APIが正規化してくれたコース名と、マスタのコース名を「完全一致」で探す
+        final courseIdx = courseRecipes.indexWhere((c) => c.alive && c.courseName == res.course);
+        
+        if (courseIdx == -1) continue; 
+        final course = courseRecipes[courseIdx];
 
-            switch (dish.calcType) {
-              case 'proportion':
-                if (req.isTableFixed) {
+        // APIからのデータは基本的に1予約=1テーブルとして処理
+        int tCount = 1; 
+        int basePeople = res.people ~/ tCount;
+        int remainder = res.people % tCount;
+
+        List<int> tables = List.generate(tCount, (index) => basePeople);
+        for (int i = 0; i < remainder; i++) {
+          tables[i] += 1;
+        }
+
+        for (final dishId in course.dishIds) {
+          final dishIdx = dishes.indexWhere((d) => d.id == dishId && d.alive);
+          if (dishIdx == -1) continue;
+          final dish = dishes[dishIdx];
+
+          for (final p in tables) {
+            dish.requiredItems.forEach((itemId, req) {
+              final isItemAlive = items.any((i) => i.id == itemId && i.alive);
+              if (!isItemAlive) return;
+
+              double finalAmountForThisTable = 0.0;
+
+              switch (dish.calcType) {
+                case 'proportion':
+                  if (req.isTableFixed) {
+                    finalAmountForThisTable = req.amountPerPerson / req.yieldPerUnit;
+                  } else {
+                    double ratio = 1.0 + (p - 3) * 0.2;
+                    if (ratio < 0) ratio = 0;
+                    finalAmountForThisTable = (req.amountPerPerson * ratio) / req.yieldPerUnit;
+                  }
+                  break;
+
+                case 'per_person':
+                  int pieces = p;
+                  if (dish.specialRule == 'sanchu_2p' && p == 2) {
+                    pieces = 4;
+                  }
+                  finalAmountForThisTable = (pieces * req.amountPerPerson) / req.yieldPerUnit;
+                  break;
+
+                case 'step':
+                  double stepCount = 1.0;
+                  if (dish.specialRule == 'reimen_step') {
+                    if (p <= 2) stepCount = 0.5;
+                    else if (p <= 4) stepCount = 1.0;
+                    else if (p == 5) stepCount = 1.5;
+                    else if (p <= 7) stepCount = 2.0;
+                  } else if (dish.specialRule == 'kuppa_step') {
+                    stepCount = (p >= 2 && p <= 4) ? 1.0 : 2.0;
+                  } else {
+                    stepCount = p.toDouble();
+                  }
+                  finalAmountForThisTable = (stepCount * req.amountPerPerson) / req.yieldPerUnit;
+                  break;
+
+                case 'per_table':
                   finalAmountForThisTable = req.amountPerPerson / req.yieldPerUnit;
-                } else {
-                  double ratio = 1.0 + (p - 3) * 0.2;
-                  if (ratio < 0) ratio = 0;
-                  finalAmountForThisTable = (req.amountPerPerson * ratio) / req.yieldPerUnit;
-                }
-                break;
-
-              case 'per_person':
-                int pieces = p;
-                if (dish.specialRule == 'sanchu_2p' && p == 2) {
-                  pieces = 4;
-                }
-                finalAmountForThisTable = (pieces * req.amountPerPerson) / req.yieldPerUnit;
-                break;
-
-              case 'step':
-                double stepCount = 1.0;
-                if (dish.specialRule == 'reimen_step') {
-                  if (p <= 2) stepCount = 0.5;
-                  else if (p <= 4) stepCount = 1.0;
-                  else if (p == 5) stepCount = 1.5;
-                  else if (p <= 7) stepCount = 2.0;
-                } else if (dish.specialRule == 'kuppa_step') {
-                  stepCount = (p >= 2 && p <= 4) ? 1.0 : 2.0;
-                } else {
-                  stepCount = p.toDouble();
-                }
-                finalAmountForThisTable = (stepCount * req.amountPerPerson) / req.yieldPerUnit;
-                break;
-
-              case 'per_table':
-                finalAmountForThisTable = req.amountPerPerson / req.yieldPerUnit;
-                break;
-            }
-            rawCounts[itemId] = (rawCounts[itemId] ?? 0.0) + finalAmountForThisTable;
-          });
+                  break;
+              }
+              rawCounts[itemId] = (rawCounts[itemId] ?? 0.0) + finalAmountForThisTable;
+            });
+          }
         }
       }
+
+      final Map<int, double> roundedCounts = {};
+      rawCounts.forEach((itemId, totalAmount) {
+        roundedCounts[itemId] = totalAmount.ceilToDouble();
+      });
+
+      if (mounted) {
+        setState(() {
+          reservedItemCounts = roundedCounts;
+        });
+      }
+    } catch (e) {
+      // ★ 万が一API連携が失敗しても、ここでエラーを握りつぶして画面をクラッシュさせない
+      debugPrint('Toreta予約データの取得または計算に失敗しました: $e');
     }
-
-    final Map<int, double> roundedCounts = {};
-    rawCounts.forEach((itemId, totalAmount) {
-      roundedCounts[itemId] = totalAmount.ceilToDouble();
-    });
-
-    setState(() {
-      reservedItemCounts = roundedCounts;
-    });
   }
 
   Future<void> checkBusinessDay() async {

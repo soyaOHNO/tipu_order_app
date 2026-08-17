@@ -15,10 +15,12 @@ class _ReservationPageState extends State<ReservationPage> {
   bool isLoading = true;
   DateTime selectedDate = DateTime.now().add(const Duration(days: 1));
 
-  final List<String> slipKeyword = [
-    'プレート',
-    'ガラス箱',
-  ];
+  // 「検索するキーワード」: 「伝票に出力するキーワード」 のペアで管理
+  final Map<String, String> slipKeywordMap = {
+    'プレート': 'P',
+    'ガラス箱': 'P',
+    // '誕生日': 'バースデー', // ★今後こんな風に自由に追加・変更できます！
+  };
 
   final List<String> commentPrefixes = [
     '要望・コメント：',
@@ -137,10 +139,10 @@ class _ReservationPageState extends State<ReservationPage> {
         }
 
         if (r.note != null && r.note!.isNotEmpty) {
-          for (final keyword in slipKeyword) {
-            if (r.note!.contains(keyword)) {
-              String displayKeyword = keyword == 'ガラス箱' ? 'プレート' : keyword;
-              details += '【$displayKeyword】';
+          for (final entry in slipKeywordMap.entries) {
+            if (r.note!.contains(entry.key)) {
+              // 辞書で設定した値（entry.value）をそのまま表示
+              details += '【${entry.value}】';
               break;
             }
           }
@@ -188,10 +190,9 @@ class _ReservationPageState extends State<ReservationPage> {
         }
 
         if (r.note != null && r.note!.isNotEmpty) {
-          for (final keyword in slipKeyword) {
-            if (r.note!.contains(keyword)) {
-              String displayKeyword = keyword == 'ガラス箱' ? 'プレート' : keyword;
-              details += '<br><span style="font-weight: bold; border: 1px solid #000; padding: 2px 4px;">$displayKeyword</span>';
+          for (final entry in slipKeywordMap.entries) {
+            if (r.note!.contains(entry.key)) {
+              details += '<br><span style="font-weight: bold; border: 1px solid #000; padding: 2px 4px;">${entry.value}</span>';
               break;
             }
           }
@@ -250,11 +251,12 @@ class _ReservationPageState extends State<ReservationPage> {
     // ★現場で文字サイズを変える時はここを調整
     final String fontSize = "35px"; 
     
+    // 💡 修正箇所： style に `white-space: pre-wrap;` を追加！
     final String htmlContent = '''
       <!DOCTYPE html>
       <html>
         <head><meta charset="utf-8"></head>
-        <body style="font-size: $fontSize; font-family: sans-serif; font-weight: bold; color: black; word-wrap: break-word;">
+        <body style="font-size: $fontSize; font-family: sans-serif; font-weight: bold; color: black; word-wrap: break-word; white-space: pre-wrap;">
           ${printText.replaceAll('\n', '<br>')}
         </body>
       </html>
@@ -263,9 +265,6 @@ class _ReservationPageState extends State<ReservationPage> {
     try {
       final encodedHtml = Uri.encodeComponent(htmlContent);
 
-      // ★ 【修正】 url= のコールバックを完全に削除！
-      // nopreview を preview に変えておくと、iPad側で印刷前に確認画面が出ます。
-      // プレビュー不要で即印刷したい場合は nopreview のままでOKです。
       final String urlStr = 'starpassprnt://v1/print/nopreview?html=$encodedHtml';
 
       // PassPRNTを呼び出し
@@ -460,7 +459,7 @@ class _ReservationPageState extends State<ReservationPage> {
                                   children: tableReservations.map((r) {
                                     
                                     final note = r.note ?? '';
-                                    final bool hasKeyword = slipKeyword.any((keyword) => note.contains(keyword));
+                                    final bool hasKeyword = slipKeywordMap.keys.any((keyword) => note.contains(keyword));
                                     
                                     bool hasActualComment = false;
                                     
